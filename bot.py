@@ -1,70 +1,50 @@
 import os
 from telethon import TelegramClient, events
+from pymongo import MongoClient
 
 # Environment variables
 API_ID = int(os.getenv('API_ID'))
 API_HASH = os.getenv('API_HASH')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-
-# Initialize with an empty list of channel IDs
-CHANNEL_IDS = []
-
-# Dictionary of text and links (initially empty)
-text_links = {}
+MONGODB_URL = os.getenv('MONGODB_URL')  # MongoDB connection string from environment variable
 
 # Initialize the client
 client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
-@client.on(events.NewMessage(pattern='/start'))
-async def start(event):
-    """Sends a welcome message when the bot starts."""
-    await event.respond('Namaste! 🙏  Bot mein aapka swagat hai! \n\n'
-                        'Ye bot aapke messages mein automatically links add kar dega.\n\n'
-                        'Agar aapko koi problem ho ya help chahiye, to /help command use karein.\n\n'
-                        'Naye channel add karne ke liye, /addchannel command use karein (jaise: /addchannel -100123456789).\n\n'
-                        'Text aur link add karne ke liye /addlink command use karein (jaise: /addlink text link).')
+# Initialize MongoDB Client and database
+mongo_client = MongoClient(MONGODB_URL)
+db = mongo_client.get_default_database() # Or specify database: mongo_client['your_database_name']
+text_links_collection = db['text_links']
 
-@client.on(events.NewMessage(pattern='/help'))
-async def help(event):
-    """Provides help and contact information."""
-    await event.respond('Aapko koi bhi problem ho, to mujhe yahaan contact karein: @captain_stive')
-
-@client.on(events.NewMessage(pattern=r'/addchannel (-?\d+)'))
-async def add_channel(event):
-    """Adds a channel ID to the list of monitored channels."""
-    channel_id = int(event.pattern_match.group(1))
-    if channel_id not in CHANNEL_IDS:
-        CHANNEL_IDS.append(channel_id)
-        await event.respond(f'Channel ID {channel_id} add ho gaya! 👍')
-    else:
-        await event.respond(f'Channel ID {channel_id} pahle se hi add hai! ⚠️')
-    print(f"Current CHANNEL_IDS: {CHANNEL_IDS}") # Debugging line: show current channel ids
+# Other code (start, help, addchannel functions etc....)
 
 @client.on(events.NewMessage(pattern=r'/addlink (.+) (https?://[^\s]+)'))
 async def add_link(event):
-    """Adds a text and link pair to the dictionary."""
-    text = event.pattern_match.group(1).strip()  # Added .strip() to remove leading/trailing spaces
-    link = event.pattern_match.group(2)
-    text_links[text] = link
-    await event.respond(f'Text "{text}" aur link "{link}" add ho gaya! 👍')
-    print(f"Current text_links: {text_links}") # Debugging line: show current text_links
+  """Adds a text and link pair to the database."""
+  text = event.pattern_match.group(1).strip()
+  link = event.pattern_match.group(2)
 
+  text_links_collection.insert_one({'text': text, 'link': link}) # Store in MongoDB
+  await event.respond(f'Text "{text}" aur link "{link}" database mein add ho gaya! 👍')
+  print(f"Added to database text: {text}, link: {link}")
 
 @client.on(events.NewMessage())
 async def add_links(event):
-    if event.is_channel and event.chat_id in CHANNEL_IDS:
-        print(f"Message received from channel ID: {event.chat_id}")
-        message_text = event.message.message
-        for text, link in text_links.items():
-            if message_text.strip() == text: # Added .strip() to remove leading/trailing spaces during match
-                new_message_text = f"{text}\n{link}"
-                try:
-                    await event.edit(new_message_text)
-                    print(f"Edited message in channel ID: {event.chat_id}")
-                except Exception as e:
-                    print(f"Error editing message in channel {event.chat_id}: {e}")
-                break
-
+  if event.is_channel and event.chat_id in CHANNEL_IDS:
+    print(f"Message received from channel ID: {event.chat_id}")
+    message_text = event.message.message
+    
+    # Find data from MongoDB
+    for item in text_links_collection.find():
+       text, link = item['text'], item['link']
+       if message_text.strip() == text:
+          new_message_text = f"{text}\n{link}"
+          try:
+              await event.edit(new_message_text)
+              print(f"Edited message in channel ID: {event.chat_id}")
+          except Exception as e:
+              print(f"Error editing message in channel {event.chat_id}: {e}")
+          break
 
 # Start the bot
 with client:
