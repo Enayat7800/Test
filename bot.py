@@ -1,11 +1,13 @@
 import os
 from telethon import TelegramClient, events, Button
-from telethon.errors import SessionPasswordNeeded
+from telethon.errors import SessionPasswordNeeded, FloodWaitError
+import asyncio
 
 # Replace hardcoded values with environment variables
 API_ID = int(os.getenv('API_ID'))
 API_HASH = os.getenv('API_HASH')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
+MY_CHANNEL_ID = int(os.getenv('MY_CHANNEL_ID'))  # Add your channel ID as an environment variable
 
 # Initialize the client
 client = TelegramClient('bot_session', API_ID, API_HASH)
@@ -18,7 +20,7 @@ user_data = {}
 async def start(event):
     user_id = event.sender_id
     await event.respond(
-        "Welcome! This bot allows you to automatically add links to messages in your channel.\n"
+        "Welcome! This bot allows you to automatically add links to messages in your channel and copy gift codes to your channel.\n"
         "Please set up your channel and links using the following commands:\n"
         "/setchannel - Set your channel ID.\n"
         "/setlinks - Set your text-link pairs.\n"
@@ -157,9 +159,29 @@ async def handle_message(event):
             user_data[user_id]['state'] = None
             await event.respond("Text-link pairs added successfully.")
 
-# New message handler for adding links in the user's channel
-@client.on(events.NewMessage)
-async def add_links(event):
+# Function to check if a string is a gift code (e.g., alphanumeric, uppercase, specific length)
+def is_gift_code(text):
+    # Customize this logic based on the gift code format
+    return text.isalnum() and text.isupper() and len(text) >= 8
+
+# New message handler for adding links in the user's channel and copying gift codes
+@client.on(events.NewMessage(incoming=True))
+async def handle_all_messages(event):
+    
+    # Copy gift codes logic (only if not from your channel to avoid loops)
+    if event.chat_id != MY_CHANNEL_ID:
+        message_text = event.message.message
+        if is_gift_code(message_text):
+            try:
+                await client.send_message(MY_CHANNEL_ID, f"Gift Code found:\n{message_text}")
+                print(f"Gift code '{message_text}' copied to your channel.")
+            except FloodWaitError as e:
+                print(f"FloodWaitError: Sleeping for {e.seconds} seconds")
+                await asyncio.sleep(e.seconds)
+            except Exception as e:
+                print(f"Error forwarding message: {e}")
+
+    # Add links logic
     for user_id, data in user_data.items():
         channel_id = data.get('channel_id')
         links = data.get('links')
@@ -170,12 +192,12 @@ async def add_links(event):
         if event.chat_id == channel_id:
             message_text = event.message.message
             for text, link in links.items():
-                if text in message_text and 'http' not in message_text :
+                if text in message_text and 'http' not in message_text:
                     new_message_text = message_text.replace(text, f"{text}\n{link}")
                     try:
                         await event.edit(new_message_text)
                     except Exception as e:
-                         print(f"Error editing message in channel {channel_id}: {e}")
+                        print(f"Error editing message in channel {channel_id}: {e}")
                     break
 
 # Start the bot
