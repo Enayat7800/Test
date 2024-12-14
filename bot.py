@@ -34,9 +34,8 @@ data = load_data()
 @client.on(events.NewMessage(pattern='/start'))
 async def start_handler(event):
     """Responds to the /start command."""
-    await event.respond('Hello! I am a bot that adds links to messages based on text.
+    await event.respond('Hello! I am a bot that adds links to messages based on text.')
 
-'
                         'Available commands:\n'
                         '/setchannel <channel_id> - Set the channel ID\n'
                         '/addlink <text> <link> - Add a new link\n'
