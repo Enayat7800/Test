@@ -6,10 +6,10 @@ import logging
 logging.basicConfig(format='[%(levelname) 5s/%(asctime)s] %(name)s: %(message)s',
                     level=logging.WARNING)  # set to DEBUG to see more info
 
-# Initialize the client - client initialize
-# we don't use API ID, API HASH and BOT TOKEN here
-# since users will provide them
-client = None
+# Initialize the client with fake data- client initialize karenge fake data se
+# will be overriten once the user provides API_ID, API_HASH and BOT_TOKEN using commands
+client = TelegramClient('bot_session', 12345, "some_hash").start(bot_token="some_token")
+
 
 # Dictionary to store user configurations - user configuration store karne ke liye dictionary
 user_configs = {}
@@ -145,15 +145,18 @@ async def add_links(event):
   bot_token = user_configs[user_id]['bot_token']
   channel_id = user_configs[user_id]['channel_id']
 
-  if client is None or not client.is_connected():
-      try:
-        # initialize the bot client
-        client = TelegramClient('bot_session', api_id, api_hash).start(bot_token=bot_token)
 
-      except Exception as e:
-        logging.error(f"Error initializing client: {e}")
-        await event.respond(f"An error occurred initializing the bot. Please check your configurations. Error: {e}")
-        return
+  try:
+    # initialize the bot client
+    global client
+    if client is None or not client.is_connected():
+      client = TelegramClient('bot_session', api_id, api_hash).start(bot_token=bot_token)
+
+
+  except Exception as e:
+    logging.error(f"Error initializing client: {e}")
+    await event.respond(f"An error occurred initializing the bot. Please check your configurations. Error: {e}")
+    return
 
   # Check if message is from the specified channel
   if event.chat_id != channel_id:
@@ -177,7 +180,7 @@ async def add_links(event):
 # Start the bot - bot start karega
 if __name__ == '__main__':
     try:
-        with TelegramClient('bot_session',  API_ID, API_HASH).start(bot_token=BOT_TOKEN) as client:
-            client.run_until_disconnected()
+      with client:
+        client.run_until_disconnected()
     except Exception as e:
         logging.error(f"An error occurred while running the bot: {e}")
