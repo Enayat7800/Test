@@ -4,90 +4,180 @@ import logging
 
 # Logging setup for debugging
 logging.basicConfig(format='[%(levelname) 5s/%(asctime)s] %(name)s: %(message)s',
-                    level=logging.WARNING) # set to DEBUG to see more info
-
-# Get environment variables - environment variables se data fetch karenge
-API_ID = int(os.getenv('API_ID'))
-API_HASH = os.getenv('API_HASH')
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-
-
-# Function to load text_links from env - text_links ko environment variables se load karega
-def load_text_links():
-    text_links = {}
-    for key, value in os.environ.items():
-        if key.startswith('LINK_'):  # Environment variables 'LINK_key=value' format mein honge
-            link_key = key[5:].lower()  # Remove 'LINK_' and convert to lower
-            text_links[link_key] = value  # Key aur value ko dictionary mein store kare
-    return text_links
-
+                    level=logging.WARNING)  # set to DEBUG to see more info
 
 # Initialize the client - client initialize
-client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+# we don't use API ID, API HASH and BOT TOKEN here
+# since users will provide them
+client = None
+
+# Dictionary to store user configurations - user configuration store karne ke liye dictionary
+user_configs = {}
 
 
 # Function to handle the /start command - /start command ko handle karega
-@client.on(events.NewMessage(pattern='/start'))
+@events.register(events.NewMessage(pattern='/start'))
 async def start(event):
-    await event.respond("Hi! I'm a bot that adds links to your messages.\n\n"
-                         "To use me, set the following environment variables:\n"
-                         "  - `API_ID`: Your Telegram API ID\n"
-                         "  - `API_HASH`: Your Telegram API hash\n"
-                         "  - `BOT_TOKEN`: Your bot's token\n"
-                         "  - `CHANNEL_ID`: The ID of the channel you want to use\n"
-                         "  - `LINK_text1`: The link you want to add when 'text1' is found in a message (replace text1 with your word)\n"
-                         "  - `LINK_text2`: Another link (as needed)\n"
-                         "  ...\n\n"
-                         "For example:\n"
-                         "  `LINK_bswin=https://your-link.com`\n\n"
-                         "After setting the environment variables, send `/help` to see more instructions.")
-
+    await event.respond(
+        "Hi! I'm a bot that adds links to your messages. Use these commands to set the configuration:\n"
+        "- `/set_api_id <api_id>`: Set your Telegram API ID\n"
+        "- `/set_api_hash <api_hash>`: Set your Telegram API hash\n"
+        "- `/set_bot_token <bot_token>`: Set your bot's token\n"
+        "- `/set_channel_id <channel_id>`: Set the ID of the channel you want to use\n"
+        "- `/set_link <text> <link>`: Set a link to add when 'text' is found in a message (e.g., `/set_link bswin https://your-link.com`)\n"
+        "- `/get_config`: View current configuration\n"
+        "After setting all configuration send messages in the channel you configured."
+    )
 
 # Function to handle the /help command - /help command ko handle karega
-@client.on(events.NewMessage(pattern='/help'))
+@events.register(events.NewMessage(pattern='/help'))
 async def help(event):
     await event.respond("Okay, Here is the instruction:\n\n"
-                         "1. First, set the required Environment variables:\n"
-                         "   - `API_ID`: Your Telegram API ID\n"
-                         "   - `API_HASH`: Your Telegram API hash\n"
-                         "   - `BOT_TOKEN`: Your bot's token\n"
-                         "   - `CHANNEL_ID`: The ID of the channel you want to use\n"
-                         "   - `LINK_text1`: The link you want to add when 'text1' is found in a message (replace text1 with your word)\n"
-                         "   - `LINK_text2`: Another link (as needed)\n"
-                         "   ...\n\n"
-                         "2. After setting the variables, send messages in the channel you configured with `CHANNEL_ID`. The bot will automatically replace the text you defined in the variable with the specified link below it.\n"
+                         "1. Configure me using this commands:\n"
+                         "- `/set_api_id <api_id>`: Set your Telegram API ID\n"
+                         "- `/set_api_hash <api_hash>`: Set your Telegram API hash\n"
+                         "- `/set_bot_token <bot_token>`: Set your bot's token\n"
+                         "- `/set_channel_id <channel_id>`: Set the ID of the channel you want to use\n"
+                         "- `/set_link <text> <link>`: Set a link to add when 'text' is found in a message (e.g., `/set_link bswin https://your-link.com`)\n"
+                         "- `/get_config`: View current configuration\n\n"
+                         "2. After setting the configuration, send messages in the channel you configured with `CHANNEL_ID`. The bot will automatically replace the text you defined in the variable with the specified link below it.\n"
                          "Example:\n"
                          "If you send this message 'Check bswin for more info' and set the environment variable 'LINK_bswin=https://your-link.com', then the bot will change the message to 'Check bswin\nhttps://your-link.com for more info'\n"
                         )
 
-# Event handler to add links - links add karne ke liye event handler
-@client.on(events.NewMessage()) # removed chats=CHANNEL_ID because we check inside the function now
-async def add_links(event):
-    # get the channel_id from environment variable
+# Function to handle the /set_api_id command - /set_api_id command ko handle karega
+@events.register(events.NewMessage(pattern='/set_api_id (.+)'))
+async def set_api_id(event):
+    user_id = event.sender_id
+    api_id = event.pattern_match.group(1)
     try:
-      channel_id = int(os.getenv('CHANNEL_ID'))
-    except TypeError:
-      logging.error("No channel id was found. Please set up CHANNEL_ID as an environment variable.")
-      return
+      api_id = int(api_id)
     except ValueError:
-      logging.error("The channel id must be a number. Please review your CHANNEL_ID variable.")
+      await event.respond("Please input a valid number for API ID")
       return
+    if user_id not in user_configs:
+        user_configs[user_id] = {}
+    user_configs[user_id]['api_id'] = api_id
+    await event.respond(f"API ID set to: {api_id}")
 
-    # Check if message is from the specified channel
-    if event.chat_id != channel_id:
+
+# Function to handle the /set_api_hash command - /set_api_hash command ko handle karega
+@events.register(events.NewMessage(pattern='/set_api_hash (.+)'))
+async def set_api_hash(event):
+    user_id = event.sender_id
+    api_hash = event.pattern_match.group(1)
+    if user_id not in user_configs:
+        user_configs[user_id] = {}
+    user_configs[user_id]['api_hash'] = api_hash
+    await event.respond(f"API Hash set to: {api_hash}")
+
+
+# Function to handle the /set_bot_token command - /set_bot_token command ko handle karega
+@events.register(events.NewMessage(pattern='/set_bot_token (.+)'))
+async def set_bot_token(event):
+    user_id = event.sender_id
+    bot_token = event.pattern_match.group(1)
+    if user_id not in user_configs:
+        user_configs[user_id] = {}
+    user_configs[user_id]['bot_token'] = bot_token
+    await event.respond(f"Bot Token set to: {bot_token}")
+
+# Function to handle the /set_channel_id command - /set_channel_id command ko handle karega
+@events.register(events.NewMessage(pattern='/set_channel_id (.+)'))
+async def set_channel_id(event):
+    user_id = event.sender_id
+    channel_id = event.pattern_match.group(1)
+    try:
+        channel_id = int(channel_id)
+    except ValueError:
+        await event.respond("Please input a valid number for Channel ID")
         return
 
-    message_text = event.message.message
-    new_message_text = message_text
-    text_links = load_text_links()  # text_links ko environment se load kiya
+    if user_id not in user_configs:
+        user_configs[user_id] = {}
+    user_configs[user_id]['channel_id'] = channel_id
+    await event.respond(f"Channel ID set to: {channel_id}")
 
-    for text, link in text_links.items():
-      if text in message_text:
-        new_message_text = new_message_text.replace(text, f"{text}\n{link}") # replaced the text with the link under the text
+# Function to handle the /set_link command - /set_link command ko handle karega
+@events.register(events.NewMessage(pattern='/set_link (.+) (.+)'))
+async def set_link(event):
+    user_id = event.sender_id
+    text = event.pattern_match.group(1)
+    link = event.pattern_match.group(2)
+    if user_id not in user_configs:
+        user_configs[user_id] = {}
+    if 'text_links' not in user_configs[user_id]:
+      user_configs[user_id]['text_links'] = {}
 
-    if new_message_text != message_text:
-      await event.edit(new_message_text, parse_mode=None) # edit message with link under it
+    user_configs[user_id]['text_links'][text] = link
+    await event.respond(f"Link for '{text}' set to: {link}")
+
+# Function to handle the /get_config command - /get_config command ko handle karega
+@events.register(events.NewMessage(pattern='/get_config'))
+async def get_config(event):
+  user_id = event.sender_id
+  if user_id in user_configs:
+    config = user_configs[user_id]
+    config_str = "Current configuration:\n"
+    for key, value in config.items():
+        if key == 'text_links':
+            config_str += f"  Text Links:\n"
+            for text, link in value.items():
+                config_str += f"    {text}: {link}\n"
+
+        else:
+          config_str += f"  {key}: {value}\n"
+    await event.respond(config_str)
+
+  else:
+    await event.respond("No configuration found for this user. Please set the config using the `/set_*` commands.")
+
+# Event handler to add links - links add karne ke liye event handler
+@events.register(events.NewMessage())
+async def add_links(event):
+  user_id = event.sender_id
+  if user_id not in user_configs or 'api_id' not in user_configs[user_id] or 'api_hash' not in user_configs[user_id] or 'bot_token' not in user_configs[user_id] or 'channel_id' not in user_configs[user_id]:
+    await event.respond("Please set the configuration using the provided commands first. Use `/help` for instruction")
+    return
+
+  api_id = user_configs[user_id]['api_id']
+  api_hash = user_configs[user_id]['api_hash']
+  bot_token = user_configs[user_id]['bot_token']
+  channel_id = user_configs[user_id]['channel_id']
+
+  if client is None or not client.is_connected():
+      try:
+        # initialize the bot client
+        client = TelegramClient('bot_session', api_id, api_hash).start(bot_token=bot_token)
+
+      except Exception as e:
+        logging.error(f"Error initializing client: {e}")
+        await event.respond(f"An error occurred initializing the bot. Please check your configurations. Error: {e}")
+        return
+
+  # Check if message is from the specified channel
+  if event.chat_id != channel_id:
+      return
+
+  message_text = event.message.message
+  new_message_text = message_text
+  text_links = user_configs[user_id].get('text_links', {})
+
+  for text, link in text_links.items():
+    if text in message_text:
+      new_message_text = new_message_text.replace(text, f"{text}\n{link}") # replaced the text with the link under the text
+
+  if new_message_text != message_text:
+    try:
+        await event.edit(new_message_text, parse_mode=None) # edit message with link under it
+    except Exception as e:
+       logging.error(f"An error occurred while editing the message: {e}")
+       await event.respond(f"An error occurred while editing the message. Error: {e}")
 
 # Start the bot - bot start karega
-with client:
-    client.run_until_disconnected()
+if __name__ == '__main__':
+    try:
+        with TelegramClient('bot_session',  API_ID, API_HASH).start(bot_token=BOT_TOKEN) as client:
+            client.run_until_disconnected()
+    except Exception as e:
+        logging.error(f"An error occurred while running the bot: {e}")
