@@ -1,186 +1,189 @@
 import os
-from telethon import TelegramClient, events
-import logging
+from telethon import TelegramClient, events, Button
+from telethon.errors import SessionPasswordNeeded
 
-# Logging setup for debugging
-logging.basicConfig(format='[%(levelname) 5s/%(asctime)s] %(name)s: %(message)s',
-                    level=logging.WARNING)  # set to DEBUG to see more info
+# Replace hardcoded values with environment variables
+API_ID = int(os.getenv('API_ID'))
+API_HASH = os.getenv('API_HASH')
+BOT_TOKEN = os.getenv('BOT_TOKEN')
 
-# Initialize the client with fake data- client initialize karenge fake data se
-# will be overriten once the user provides API_ID, API_HASH and BOT_TOKEN using commands
-client = TelegramClient('bot_session', 12345, "some_hash").start(bot_token="some_token")
+# Initialize the client
+client = TelegramClient('bot_session', API_ID, API_HASH)
 
+# Dictionary to store user-specific data (channel ID and links)
+user_data = {}
 
-# Dictionary to store user configurations - user configuration store karne ke liye dictionary
-user_configs = {}
-
-
-# Function to handle the /start command - /start command ko handle karega
-@events.register(events.NewMessage(pattern='/start'))
+# /start command handler
+@client.on(events.NewMessage(pattern='/start'))
 async def start(event):
+    user_id = event.sender_id
     await event.respond(
-        "Hi! I'm a bot that adds links to your messages. Use these commands to set the configuration:\n"
-        "- `/set_api_id <api_id>`: Set your Telegram API ID\n"
-        "- `/set_api_hash <api_hash>`: Set your Telegram API hash\n"
-        "- `/set_bot_token <bot_token>`: Set your bot's token\n"
-        "- `/set_channel_id <channel_id>`: Set the ID of the channel you want to use\n"
-        "- `/set_link <text> <link>`: Set a link to add when 'text' is found in a message (e.g., `/set_link bswin https://your-link.com`)\n"
-        "- `/get_config`: View current configuration\n"
-        "After setting all configuration send messages in the channel you configured."
+        "Welcome! This bot allows you to automatically add links to messages in your channel.\n"
+        "Please set up your channel and links using the following commands:\n"
+        "/setchannel - Set your channel ID.\n"
+        "/setlinks - Set your text-link pairs.\n"
+        "/help - for more info"
+        ,
+        buttons=[
+            [Button.inline("Set Channel", data="setchannel")],
+            [Button.inline("Set Links", data="setlinks")],
+             [Button.inline("Help", data="help")]
+        ]
     )
+    user_data[user_id] = {'channel_id': None, 'links': {}}
 
-# Function to handle the /help command - /help command ko handle karega
-@events.register(events.NewMessage(pattern='/help'))
-async def help(event):
-    await event.respond("Okay, Here is the instruction:\n\n"
-                         "1. Configure me using this commands:\n"
-                         "- `/set_api_id <api_id>`: Set your Telegram API ID\n"
-                         "- `/set_api_hash <api_hash>`: Set your Telegram API hash\n"
-                         "- `/set_bot_token <bot_token>`: Set your bot's token\n"
-                         "- `/set_channel_id <channel_id>`: Set the ID of the channel you want to use\n"
-                         "- `/set_link <text> <link>`: Set a link to add when 'text' is found in a message (e.g., `/set_link bswin https://your-link.com`)\n"
-                         "- `/get_config`: View current configuration\n\n"
-                         "2. After setting the configuration, send messages in the channel you configured with `CHANNEL_ID`. The bot will automatically replace the text you defined in the variable with the specified link below it.\n"
-                         "Example:\n"
-                         "If you send this message 'Check bswin for more info' and set the environment variable 'LINK_bswin=https://your-link.com', then the bot will change the message to 'Check bswin\nhttps://your-link.com for more info'\n"
-                        )
+# /help command handler
 
-# Function to handle the /set_api_id command - /set_api_id command ko handle karega
-@events.register(events.NewMessage(pattern='/set_api_id (.+)'))
-async def set_api_id(event):
+@client.on(events.NewMessage(pattern='/help'))
+async def help_command(event):
+    
+    help_message = (
+        "Here are the available commands:\n\n"
+        "/start - Start the bot and see the welcome message.\n"
+        "/setchannel - Set the channel where you want the bot to operate. "
+        "You need to add the bot to your channel as an admin with edit messages permission.\n"
+        "/setlinks - Set the text-link pairs that the bot will use to replace text with links. "
+        "Send each pair in the format 'text:link'.\n"
+        "/showlinks - View your currently configured text-link pairs.\n"
+        "/clearlnks - To clear all links and add links again.\n"
+        "/help - Display this help message."
+    )
+    await event.respond(help_message)
+
+#Inline query handler
+@client.on(events.CallbackQuery)
+async def callback_query_handler(event):
+    query_data = event.data.decode()
+
+    if query_data == "setchannel":
+        await setchannel_inline(event)
+    elif query_data == "setlinks":
+        await setlinks_inline(event)
+    elif query_data == "help":
+        await help_inline(event)
+
+# /setchannel command handler
+# @client.on(events.NewMessage(pattern='/setchannel'))
+async def setchannel_inline(event):
     user_id = event.sender_id
-    api_id = event.pattern_match.group(1)
-    try:
-      api_id = int(api_id)
-    except ValueError:
-      await event.respond("Please input a valid number for API ID")
-      return
-    if user_id not in user_configs:
-        user_configs[user_id] = {}
-    user_configs[user_id]['api_id'] = api_id
-    await event.respond(f"API ID set to: {api_id}")
+    await event.respond("Please send your channel ID (e.g., -100xxxxxxxxxx). "
+                        "Make sure to add this bot to your channel as an admin with 'edit messages' permission.")
+    user_data[user_id]['state'] = 'setting_channel'
 
-
-# Function to handle the /set_api_hash command - /set_api_hash command ko handle karega
-@events.register(events.NewMessage(pattern='/set_api_hash (.+)'))
-async def set_api_hash(event):
+# /setlinks command handler
+# @client.on(events.NewMessage(pattern='/setlinks'))
+async def setlinks_inline(event):
     user_id = event.sender_id
-    api_hash = event.pattern_match.group(1)
-    if user_id not in user_configs:
-        user_configs[user_id] = {}
-    user_configs[user_id]['api_hash'] = api_hash
-    await event.respond(f"API Hash set to: {api_hash}")
+    await event.respond("Please send your text-link pairs, each on a new line, in the format 'text:link'. "
+                        "For example:\n51game:https://51gameappinin.com\n82bet:https://82bet.com")
+    user_data[user_id]['state'] = 'setting_links'
 
-
-# Function to handle the /set_bot_token command - /set_bot_token command ko handle karega
-@events.register(events.NewMessage(pattern='/set_bot_token (.+)'))
-async def set_bot_token(event):
+async def help_inline(event):
     user_id = event.sender_id
-    bot_token = event.pattern_match.group(1)
-    if user_id not in user_configs:
-        user_configs[user_id] = {}
-    user_configs[user_id]['bot_token'] = bot_token
-    await event.respond(f"Bot Token set to: {bot_token}")
+    help_message = (
+        "Here are the available commands:\n\n"
+        "/start - Start the bot and see the welcome message.\n"
+        "/setchannel - Set the channel where you want the bot to operate. "
+        "You need to add the bot to your channel as an admin with edit messages permission.\n"
+        "/setlinks - Set the text-link pairs that the bot will use to replace text with links. "
+        "Send each pair in the format 'text:link'.\n"
+        "/showlinks - View your currently configured text-link pairs.\n"
+        "/clearlnks - To clear all links and add links again.\n"
+        "/help - Display this help message."
+    )
+    await event.respond(help_message)
 
-# Function to handle the /set_channel_id command - /set_channel_id command ko handle karega
-@events.register(events.NewMessage(pattern='/set_channel_id (.+)'))
-async def set_channel_id(event):
+# /showlinks command handler
+@client.on(events.NewMessage(pattern='/showlinks'))
+async def showlinks(event):
     user_id = event.sender_id
-    channel_id = event.pattern_match.group(1)
-    try:
-        channel_id = int(channel_id)
-    except ValueError:
-        await event.respond("Please input a valid number for Channel ID")
-        return
+    if user_id in user_data and user_data[user_id]['links']:
+        links_str = ""
+        for text, link in user_data[user_id]['links'].items():
+            links_str += f"{text}: {link}\n"
+        await event.respond(f"Your current text-link pairs are:\n{links_str}")
+    else:
+        await event.respond("You haven't set any text-link pairs yet.")
 
-    if user_id not in user_configs:
-        user_configs[user_id] = {}
-    user_configs[user_id]['channel_id'] = channel_id
-    await event.respond(f"Channel ID set to: {channel_id}")
-
-# Function to handle the /set_link command - /set_link command ko handle karega
-@events.register(events.NewMessage(pattern='/set_link (.+) (.+)'))
-async def set_link(event):
+@client.on(events.NewMessage(pattern='/clearlinks'))
+async def clearlinks(event):
     user_id = event.sender_id
-    text = event.pattern_match.group(1)
-    link = event.pattern_match.group(2)
-    if user_id not in user_configs:
-        user_configs[user_id] = {}
-    if 'text_links' not in user_configs[user_id]:
-      user_configs[user_id]['text_links'] = {}
+    if user_id in user_data:
+        user_data[user_id]['links'] = {}
+        await event.respond("All your links have been cleared.")
+    else:
+        await event.respond("You haven't set any links yet.")
 
-    user_configs[user_id]['text_links'][text] = link
-    await event.respond(f"Link for '{text}' set to: {link}")
+# Message handler for setting channel ID and links
+@client.on(events.NewMessage)
+async def handle_message(event):
+    user_id = event.sender_id
+    if user_id in user_data:
+        state = user_data[user_id].get('state')
 
-# Function to handle the /get_config command - /get_config command ko handle karega
-@events.register(events.NewMessage(pattern='/get_config'))
-async def get_config(event):
-  user_id = event.sender_id
-  if user_id in user_configs:
-    config = user_configs[user_id]
-    config_str = "Current configuration:\n"
-    for key, value in config.items():
-        if key == 'text_links':
-            config_str += f"  Text Links:\n"
-            for text, link in value.items():
-                config_str += f"    {text}: {link}\n"
+        if state == 'setting_channel':
+            try:
+                channel_id = int(event.message.message)
+                # Try to get channel entity to verify the channel ID
+                channel_entity = await client.get_entity(channel_id)
 
-        else:
-          config_str += f"  {key}: {value}\n"
-    await event.respond(config_str)
+                # Check if the bot is an admin in the channel with edit messages permission
+                bot_permissions = await client.get_permissions(channel_entity, client.uid)
+                if not bot_permissions.is_admin or not bot_permissions.edit_messages:
+                    await event.respond("I am not an admin with 'edit messages' permission in this channel. "
+                                        "Please make me an admin and grant the necessary permission.")
+                    return
 
-  else:
-    await event.respond("No configuration found for this user. Please set the config using the `/set_*` commands.")
+                user_data[user_id]['channel_id'] = channel_id
+                user_data[user_id]['state'] = None
+                await event.respond(f"Channel ID set to {channel_id}")
+            except ValueError:
+                await event.respond("Invalid channel ID. Please send a valid integer.")
+            except Exception as e:
+                await event.respond(f"Error: {e}\n"
+                                     "Make sure you have added the bot to your channel as admin with edit message permission.")
 
-# Event handler to add links - links add karne ke liye event handler
-@events.register(events.NewMessage())
+        elif state == 'setting_links':
+            message_lines = event.message.message.strip().split('\n')
+            new_links = {}
+            for line in message_lines:
+                try:
+                    text, link = line.split(':', 1)
+                    new_links[text.strip()] = link.strip()
+                except ValueError:
+                    await event.respond("Invalid format. Please use 'text:link' format for each line.")
+                    return
+            user_data[user_id]['links'].update(new_links)
+            user_data[user_id]['state'] = None
+            await event.respond("Text-link pairs added successfully.")
+
+# New message handler for adding links in the user's channel
+@client.on(events.NewMessage)
 async def add_links(event):
-  user_id = event.sender_id
-  if user_id not in user_configs or 'api_id' not in user_configs[user_id] or 'api_hash' not in user_configs[user_id] or 'bot_token' not in user_configs[user_id] or 'channel_id' not in user_configs[user_id]:
-    await event.respond("Please set the configuration using the provided commands first. Use `/help` for instruction")
-    return
+    for user_id, data in user_data.items():
+        channel_id = data.get('channel_id')
+        links = data.get('links')
 
-  api_id = user_configs[user_id]['api_id']
-  api_hash = user_configs[user_id]['api_hash']
-  bot_token = user_configs[user_id]['bot_token']
-  channel_id = user_configs[user_id]['channel_id']
+        if channel_id is None or links is None:
+            continue  # Skip if channel ID or links are not set
 
+        if event.chat_id == channel_id:
+            message_text = event.message.message
+            for text, link in links.items():
+                if text in message_text and 'http' not in message_text :
+                    new_message_text = message_text.replace(text, f"{text}\n{link}")
+                    try:
+                        await event.edit(new_message_text)
+                    except Exception as e:
+                         print(f"Error editing message in channel {channel_id}: {e}")
+                    break
 
-  try:
-    # initialize the bot client
-    global client
-    if client is None or not client.is_connected():
-      client = TelegramClient('bot_session', api_id, api_hash).start(bot_token=bot_token)
+# Start the bot
+async def start_bot():
+    await client.start(bot_token=BOT_TOKEN)
+    print("Bot started successfully!")
+    await client.run_until_disconnected()
 
-
-  except Exception as e:
-    logging.error(f"Error initializing client: {e}")
-    await event.respond(f"An error occurred initializing the bot. Please check your configurations. Error: {e}")
-    return
-
-  # Check if message is from the specified channel
-  if event.chat_id != channel_id:
-      return
-
-  message_text = event.message.message
-  new_message_text = message_text
-  text_links = user_configs[user_id].get('text_links', {})
-
-  for text, link in text_links.items():
-    if text in message_text:
-      new_message_text = new_message_text.replace(text, f"{text}\n{link}") # replaced the text with the link under the text
-
-  if new_message_text != message_text:
-    try:
-        await event.edit(new_message_text, parse_mode=None) # edit message with link under it
-    except Exception as e:
-       logging.error(f"An error occurred while editing the message: {e}")
-       await event.respond(f"An error occurred while editing the message. Error: {e}")
-
-# Start the bot - bot start karega
-if __name__ == '__main__':
-    try:
-      with client:
-        client.run_until_disconnected()
-    except Exception as e:
-        logging.error(f"An error occurred while running the bot: {e}")
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(start_bot())
