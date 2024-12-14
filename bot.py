@@ -43,7 +43,7 @@ async def add_channel(event):
 @client.on(events.NewMessage(pattern=r'/addlink (.+) (https?://[^\s]+)'))
 async def add_link(event):
     """Adds a text and link pair to the dictionary."""
-    text = event.pattern_match.group(1)
+    text = event.pattern_match.group(1).strip()  # Added .strip() to remove leading/trailing spaces
     link = event.pattern_match.group(2)
     text_links[text] = link
     await event.respond(f'Text "{text}" aur link "{link}" add ho gaya! 👍')
@@ -56,10 +56,13 @@ async def add_links(event):
         print(f"Message received from channel ID: {event.chat_id}")
         message_text = event.message.message
         for text, link in text_links.items():
-            if message_text == text:
+            if message_text.strip() == text: # Added .strip() to remove leading/trailing spaces during match
                 new_message_text = f"{text}\n{link}"
-                await event.edit(new_message_text)
-                print(f"Edited message in channel ID: {event.chat_id}")
+                try:
+                    await event.edit(new_message_text)
+                    print(f"Edited message in channel ID: {event.chat_id}")
+                except Exception as e:
+                    print(f"Error editing message in channel {event.chat_id}: {e}")
                 break
 
 
