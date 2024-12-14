@@ -4,7 +4,7 @@ from telethon import TelegramClient, events
 # Replace hardcoded values with environment variables
 API_ID = int(os.getenv('API_ID'))  # Set in Railway environment variables
 API_HASH = os.getenv('API_HASH')  # Set in Railway environment variables
-BOT_TOKEN = os.getenv('BOT_TOKEN'))  # Set in Railway environment variables
+BOT_TOKEN = os.getenv('BOT_TOKEN')  # Set in Railway environment variables
 CHANNEL_ID = int(os.getenv('CHANNEL_ID'))  # Set your channel ID in Railway environment variables
 
 # Dictionary of text and links
