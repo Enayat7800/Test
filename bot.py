@@ -1,34 +1,53 @@
 import os
 import json
 from telethon import TelegramClient, events
+import pymongo
+from pymongo import MongoClient
 
 # Environment variables
 API_ID = int(os.getenv('API_ID'))
 API_HASH = os.getenv('API_HASH')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
+MONGODB_URL = os.getenv('MONGODB_URL') # New environment variable
 
-# File to store data
-DATA_FILE = 'bot_data.json'
 
-# Load data from file or initialize if not exists
-def load_data():
+# Initialize MongoDB client and database
+client_mongo = None
+db = None
+if MONGODB_URL:
     try:
-        with open(DATA_FILE, 'r') as f:
-            data = json.load(f)
-            return data.get('channel_ids', []), data.get('text_links', {})
-    except (FileNotFoundError, json.JSONDecodeError):
+        client_mongo = MongoClient(MONGODB_URL)
+        db = client_mongo.get_default_database()
+    except pymongo.errors.ConnectionFailure as e:
+        print(f"Could not connect to MongoDB: {e}")
+
+
+# Function to load data from MongoDB
+def load_data():
+    if db:
+      try:
+        data = db.bot_data.find_one()
+        if data:
+          return data.get('channel_ids', []), data.get('text_links', {})
+        else:
+           return [], {}
+      except Exception as e:
+           print(f"Error loading data from MongoDB: {e}")
+           return [], {}
+    else:
         return [], {}
 
-# Save data to file
-def save_data(channel_ids, text_links):
-    data = {'channel_ids': channel_ids, 'text_links': text_links}
-    with open(DATA_FILE, 'w') as f:
-        json.dump(data, f, indent=4)
 
+# Function to save data to MongoDB
+def save_data(channel_ids, text_links):
+    if db:
+        try:
+          db.bot_data.update_one({}, {'$set': {'channel_ids': channel_ids, 'text_links': text_links}}, upsert=True)
+        except Exception as e:
+          print(f"Error saving data to MongoDB: {e}")
 
 # Initialize the bot with data from storage
 CHANNEL_IDS, text_links = load_data()
-
 
 # Initialize the client
 client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
