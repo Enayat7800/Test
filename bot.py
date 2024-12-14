@@ -88,4 +88,4 @@ async def add_channel(event):
             else:
                 await event.respond(f'Channel ID {channel_id} already added hai. ⚠️')
         else:
-             await event.respond(f'Invalid channel ID: {channel_
+             await event.respond(f'Invalid channel ID: {channel_id}
