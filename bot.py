@@ -54,14 +54,14 @@ async def start(event):
 async def help(event):
     """Provides help and contact information."""
     await event.respond('Aapko koi bhi problem ho, to mujhe yahaan contact karein: @captain_stive')
-
+    
 @client.on(events.NewMessage(chats=CHANNEL_ID))
 async def add_links(event):
     message_text = event.message.message
     for text, link in text_links.items():
         if message_text == text:
             new_message_text = f"{text}\n{link}"
-            await event.edit(new_message_text, parse_mode=None)  # Removed 'html' parse mode
+            await event.edit(new_message_text) 
             break
 
 # Start the bot
