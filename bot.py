@@ -1,13 +1,18 @@
 import os
 from telethon import TelegramClient, events
+from telethon.tl.functions.channels import GetFullChannelRequest
+from telethon.errors import ChannelInvalidError
 
-# Replace hardcoded values with environment variables
-API_ID = int(os.getenv('API_ID'))  # Set in Railway environment variables
-API_HASH = os.getenv('API_HASH')  # Set in Railway environment variables
-BOT_TOKEN = os.getenv('BOT_TOKEN')  # Set in Railway environment variables
-CHANNEL_ID = int(os.getenv('CHANNEL_ID'))  # Set your channel ID in Railway environment variables
 
-# Dictionary of text and links
+# Environment variables se values load karo
+API_ID = int(os.getenv('API_ID'))
+API_HASH = os.getenv('API_HASH')
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+
+# Channel IDs ko ek list mein store karenge
+CHANNEL_IDS = list(map(int, os.getenv('CHANNEL_IDS', '').split(','))) if os.getenv('CHANNEL_IDS') else []
+
+# Text aur links ka dictionary
 text_links = {
     '51game': 'https://51gameappinin.com/#/register?invitationCode=83363102977',
     'bswin': 'https://bslotto.com/#/register?invitationCode=86787104955',
@@ -40,30 +45,47 @@ text_links = {
     'Dream99': 'https://dream99.info/#/register?invitationCode=58173619026',
 }
 
-# Initialize the client
+# Client initialize karo
 client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+
+
+async def is_valid_channel(channel_id):
+    try:
+        channel = await client(GetFullChannelRequest(channel_id))
+        return True
+    except ChannelInvalidError:
+        return False
+    except Exception as e:
+        print(f"Error checking channel {channel_id}: {e}")
+        return False
+
 
 @client.on(events.NewMessage(pattern='/start'))
 async def start(event):
-    """Sends a welcome message when the bot starts."""
+    """Welcome message."""
     await event.respond('Namaste! 🙏  Bot mein aapka swagat hai! \n\n'
                         'Ye bot aapke messages mein automatically links add kar dega.\n\n'
                         'Agar aapko koi problem ho ya help chahiye, to /help command use karein.')
 
 @client.on(events.NewMessage(pattern='/help'))
 async def help(event):
-    """Provides help and contact information."""
-    await event.respond('Aapko koi bhi problem ho, to mujhe yahaan contact karein: @captain_stive')
-    
-@client.on(events.NewMessage(chats=CHANNEL_ID))
-async def add_links(event):
-    message_text = event.message.message
-    for text, link in text_links.items():
-        if message_text == text:
-            new_message_text = f"{text}\n{link}"
-            await event.edit(new_message_text) 
-            break
+    """Help aur contact information."""
+    await event.respond('Aapko koi bhi problem ho, to mujhe yahaan contact karein: @captain_stive\n\n'
+                       'Commands:\n'
+                       '/add_channel <channel_id> - Channel add karein.\n'
+                       '/remove_channel <channel_id> - Channel remove karein.\n'
+                       '/list_channels - Added channels dekhein.')
 
-# Start the bot
-with client:
-    client.run_until_disconnected()
+@client.on(events.NewMessage(pattern=r'/add_channel (.*)'))
+async def add_channel(event):
+    """Channel add karein."""
+    try:
+        channel_id = int(event.pattern_match.group(1))
+        if await is_valid_channel(channel_id):
+            if channel_id not in CHANNEL_IDS:
+                CHANNEL_IDS.append(channel_id)
+                await event.respond(f'Channel ID {channel_id} add ho gaya! ✅')
+            else:
+                await event.respond(f'Channel ID {channel_id} already added hai. ⚠️')
+        else:
+             await event.respond(f'Invalid channel ID: {channel_
