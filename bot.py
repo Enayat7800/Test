@@ -1,18 +1,15 @@
 import os
 from telethon import TelegramClient, events
-from telethon.tl.functions.channels import GetFullChannelRequest
-from telethon.errors import ChannelInvalidError
 
-
-# Environment variables se values load karo
+# Environment variables
 API_ID = int(os.getenv('API_ID'))
 API_HASH = os.getenv('API_HASH')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 
-# Channel IDs ko ek list mein store karenge
-CHANNEL_IDS = list(map(int, os.getenv('CHANNEL_IDS', '').split(','))) if os.getenv('CHANNEL_IDS') else []
+# Initialize with an empty list of channel IDs
+CHANNEL_IDS = [] # CHANNEL_IDS ko empty list se initialize kiya
 
-# Text aur links ka dictionary
+# Dictionary of text and links
 text_links = {
     '51game': 'https://51gameappinin.com/#/register?invitationCode=83363102977',
     'bswin': 'https://bslotto.com/#/register?invitationCode=86787104955',
@@ -45,47 +42,42 @@ text_links = {
     'Dream99': 'https://dream99.info/#/register?invitationCode=58173619026',
 }
 
-# Client initialize karo
+# Initialize the client
 client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
-
-
-async def is_valid_channel(channel_id):
-    try:
-        channel = await client(GetFullChannelRequest(channel_id))
-        return True
-    except ChannelInvalidError:
-        return False
-    except Exception as e:
-        print(f"Error checking channel {channel_id}: {e}")
-        return False
-
 
 @client.on(events.NewMessage(pattern='/start'))
 async def start(event):
-    """Welcome message."""
+    """Sends a welcome message when the bot starts."""
     await event.respond('Namaste! 🙏  Bot mein aapka swagat hai! \n\n'
                         'Ye bot aapke messages mein automatically links add kar dega.\n\n'
-                        'Agar aapko koi problem ho ya help chahiye, to /help command use karein.')
+                        'Agar aapko koi problem ho ya help chahiye, to /help command use karein.\n\n'
+                        'Naye channel add karne ke liye, /addchannel command use karein (jaise: /addchannel 123456789).')
 
 @client.on(events.NewMessage(pattern='/help'))
 async def help(event):
-    """Help aur contact information."""
-    await event.respond('Aapko koi bhi problem ho, to mujhe yahaan contact karein: @captain_stive\n\n'
-                       'Commands:\n'
-                       '/add_channel <channel_id> - Channel add karein.\n'
-                       '/remove_channel <channel_id> - Channel remove karein.\n'
-                       '/list_channels - Added channels dekhein.')
+    """Provides help and contact information."""
+    await event.respond('Aapko koi bhi problem ho, to mujhe yahaan contact karein: @captain_stive')
 
-@client.on(events.NewMessage(pattern=r'/add_channel (.*)'))
+@client.on(events.NewMessage(pattern=r'/addchannel (\d+)'))
 async def add_channel(event):
-    """Channel add karein."""
-    try:
-        channel_id = int(event.pattern_match.group(1))
-        if await is_valid_channel(channel_id):
-            if channel_id not in CHANNEL_IDS:
-                CHANNEL_IDS.append(channel_id)
-                await event.respond(f'Channel ID {channel_id} add ho gaya! ✅')
-            else:
-                await event.respond(f'Channel ID {channel_id} already added hai. ⚠️')
-        else:
-             await event.respond(f'Invalid channel ID: {channel_id} ha ')
+    """Adds a channel ID to the list of monitored channels."""
+    channel_id = int(event.pattern_match.group(1))
+    if channel_id not in CHANNEL_IDS:
+        CHANNEL_IDS.append(channel_id)
+        await event.respond(f'Channel ID {channel_id} add ho gaya! 👍')
+    else:
+        await event.respond(f'Channel ID {channel_id} pahle se hi add hai! ⚠️')
+
+@client.on(events.NewMessage()) # ab hum chat se channel id nikalege
+async def add_links(event):
+    if event.is_channel and event.chat_id in CHANNEL_IDS:  # Check if message is from a monitored channel
+        message_text = event.message.message
+        for text, link in text_links.items():
+            if message_text == text:
+                new_message_text = f"{text}\n{link}"
+                await event.edit(new_message_text)
+                break
+
+# Start the bot
+with client:
+    client.run_until_disconnected()
