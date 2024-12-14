@@ -7,7 +7,7 @@ API_HASH = os.getenv('API_HASH')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 
 # Initialize with an empty list of channel IDs
-CHANNEL_IDS = [] # CHANNEL_IDS ko empty list se initialize kiya
+CHANNEL_IDS = []
 
 # Dictionary of text and links
 text_links = {
@@ -51,14 +51,14 @@ async def start(event):
     await event.respond('Namaste! 🙏  Bot mein aapka swagat hai! \n\n'
                         'Ye bot aapke messages mein automatically links add kar dega.\n\n'
                         'Agar aapko koi problem ho ya help chahiye, to /help command use karein.\n\n'
-                        'Naye channel add karne ke liye, /addchannel command use karein (jaise: /addchannel 123456789).')
+                        'Naye channel add karne ke liye, /addchannel command use karein (jaise: /addchannel -100123456789).')
 
 @client.on(events.NewMessage(pattern='/help'))
 async def help(event):
     """Provides help and contact information."""
     await event.respond('Aapko koi bhi problem ho, to mujhe yahaan contact karein: @captain_stive')
 
-@client.on(events.NewMessage(pattern=r'/addchannel (\d+)'))
+@client.on(events.NewMessage(pattern=r'/addchannel (-?\d+)'))
 async def add_channel(event):
     """Adds a channel ID to the list of monitored channels."""
     channel_id = int(event.pattern_match.group(1))
@@ -67,15 +67,19 @@ async def add_channel(event):
         await event.respond(f'Channel ID {channel_id} add ho gaya! 👍')
     else:
         await event.respond(f'Channel ID {channel_id} pahle se hi add hai! ⚠️')
+    print(f"Current CHANNEL_IDS: {CHANNEL_IDS}") # Debugging line: show current channel ids
 
-@client.on(events.NewMessage()) # ab hum chat se channel id nikalege
+
+@client.on(events.NewMessage())
 async def add_links(event):
     if event.is_channel and event.chat_id in CHANNEL_IDS:  # Check if message is from a monitored channel
+        print(f"Message received from channel ID: {event.chat_id}") # Debugging line: to know from which channel message received
         message_text = event.message.message
         for text, link in text_links.items():
             if message_text == text:
                 new_message_text = f"{text}\n{link}"
                 await event.edit(new_message_text)
+                print(f"Edited message in channel ID: {event.chat_id}") #Debugging line : to know message edited in which channel
                 break
 
 # Start the bot
