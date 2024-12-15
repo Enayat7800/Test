@@ -3,40 +3,54 @@ import json
 from telethon import TelegramClient, events
 from datetime import datetime, timedelta
 import logging
-import re  # Import the regular expression module
+import re
+from pymongo import MongoClient
 
 # Environment variables
 API_ID = int(os.getenv('API_ID'))
 API_HASH = os.getenv('API_HASH')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID'))
-NOTIFICATION_CHANNEL_ID = int(os.getenv('NOTIFICATION_CHANNEL_ID'))  # New channel ID
+NOTIFICATION_CHANNEL_ID = int(os.getenv('NOTIFICATION_CHANNEL_ID'))
+MONGODB_URL = os.getenv('MONGODB_URL')  # New environment variable
 
-# File to store data
-DATA_FILE = 'bot_data.json'
+# Database and collection names
+DB_NAME = "telegram_bot_db"  # You can change this if needed
+COLLECTION_NAME = "bot_data"  # You can change this if needed
 
-# Load data from file or initialize if not exists
+# Initialize MongoDB client
+client = MongoClient(MONGODB_URL)
+db = client[DB_NAME]
+collection = db[COLLECTION_NAME]
+
+# Load data from MongoDB or initialize if not exists
 def load_data():
     try:
-        with open(DATA_FILE, 'r') as f:
-            data = json.load(f)
+        data = collection.find_one()
+        if data:
             return (
                 data.get('channel_ids', []),
                 data.get('text_links', {}),
                 data.get('user_data', {})
             )
-    except (FileNotFoundError, json.JSONDecodeError):
+        else:
+            return [], {}, {}
+    except Exception as e:
+        logging.error(f"Error loading data from MongoDB: {e}")
         return [], {}, {}
 
-# Save data to file
+# Save data to MongoDB
 def save_data(channel_ids, text_links, user_data):
     data = {
         'channel_ids': channel_ids,
         'text_links': text_links,
         'user_data': user_data
     }
-    with open(DATA_FILE, 'w') as f:
-        json.dump(data, f, indent=4)
+    try:
+        collection.replace_one({}, data, upsert=True)
+    except Exception as e:
+        logging.error(f"Error saving data to MongoDB: {e}")
+
 
 # Initialize the bot with data from storage
 CHANNEL_IDS, text_links, user_data = load_data()
@@ -47,6 +61,7 @@ client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOK
 # Set up logging
 logging.basicConfig(filename='bot.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+
 async def send_notification(message):
     """Sends a message to the specified notification channel."""
     try:
@@ -54,7 +69,6 @@ async def send_notification(message):
         logging.info(f"Notification sent to channel {NOTIFICATION_CHANNEL_ID}: {message}")
     except Exception as e:
         logging.error(f"Error sending notification: {e}")
-
 
 def is_trial_active(user_id):
     if user_id in user_data:
@@ -83,7 +97,7 @@ def check_user_status(user_id):
             return is_user_active(user_id)
     else:
         return is_trial_active(user_id)
-
+    
 
 @client.on(events.NewMessage(pattern='/start'))
 async def start(event):
@@ -142,7 +156,7 @@ async def add_channel(event):
         channel_id = int(match.group(1))
         if channel_id not in CHANNEL_IDS:
             CHANNEL_IDS.append(channel_id)
-            save_data(CHANNEL_IDS, text_links,user_data)
+            save_data(CHANNEL_IDS, text_links, user_data)
             await event.respond(f'Channel ID {channel_id} add ho gaya! 👍')
             await send_notification(f"Channel added by user {event.sender_id}:\nChannel ID: {channel_id}")
         else:
@@ -166,7 +180,7 @@ async def add_link(event):
     text = match.group(1).strip()
     link = match.group(2)
     text_links[text] = link
-    save_data(CHANNEL_IDS, text_links,user_data)
+    save_data(CHANNEL_IDS, text_links, user_data)
     await event.respond(f'Text "{text}" aur link "{link}" add ho gaya! 👍')
     await send_notification(f"Link added by user {event.sender_id}:\nText: {text}\nLink: {link}")
     logging.info(f"Current text_links: {text_links}")
@@ -213,7 +227,7 @@ async def remove_channel(event):
         channel_id = int(match.group(1))
         if channel_id in CHANNEL_IDS:
             CHANNEL_IDS.remove(channel_id)
-            save_data(CHANNEL_IDS, text_links,user_data)
+            save_data(CHANNEL_IDS, text_links, user_data)
             await event.respond(f'Channel ID {channel_id} removed! 👍')
         else:
              await event.respond(f'Channel ID {channel_id} not found! ⚠️')
@@ -237,7 +251,7 @@ async def remove_link(event):
     text = match.group(1).strip()
     if text in text_links:
         del text_links[text]
-        save_data(CHANNEL_IDS, text_links,user_data)
+        save_data(CHANNEL_IDS, text_links, user_data)
         await event.respond(f'Link with text "{text}" removed! 👍')
     else:
          await event.respond(f'Link with text "{text}" not found! ⚠️')
@@ -344,7 +358,6 @@ async def handle_chat_actions(event):
                await send_notification(f"Bot added to channel: {chat.title}")
        except Exception as e:
             logging.error(f"Error getting chat username: {e}")
-
 
 @client.on(events.NewMessage())
 async def add_links(event):
