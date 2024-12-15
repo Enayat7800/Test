@@ -3,6 +3,7 @@ import json
 from telethon import TelegramClient, events
 from datetime import datetime, timedelta
 import logging
+import re  # Import the regular expression module
 
 # Environment variables
 API_ID = int(os.getenv('API_ID'))
@@ -106,7 +107,7 @@ async def start(event):
     username = user.username if user.username else "N/A"
     await send_notification(f"New user started the bot:\nUser ID: {user_id}\nUsername: @{username}")
     
-    await event.respond('Namaste! 🙏 Captain Bot mein aapka swagat hai! \n\n'
+    await event.respond('Namaste! 🙏  Bot mein aapka swagat hai! \n\n'
                         'Ye bot aapke messages mein automatically links add kar dega.\n\n'
                         'Agar aapko koi problem ho ya help chahiye, to /help command use karein.\n\n'
                         'Naye channel add karne ke liye, /addchannel command use karein (jaise: /addchannel -100123456789).\n\n'
@@ -124,14 +125,21 @@ async def help(event):
        return
     await event.respond('Aapko koi bhi problem ho, to mujhe yahaan contact karein: @captain_stive')
 
-@client.on(events.NewMessage(pattern=r'/addchannel (-?\d+)'))
+@client.on(events.NewMessage(pattern=r'/addchannel'))
 async def add_channel(event):
-    """Adds a channel ID to the list of monitored channels."""
+    """Adds a channel ID to the list of monitored channels with format validation."""
     if not check_user_status(event.sender_id):
-         await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
-         return
+        await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+        return
+
+    full_command = event.text.strip()
+    match = re.match(r'/addchannel (-?\d+)', full_command)
+    if not match:
+        await event.respond('Invalid command format. Use: /addchannel -100123456789')
+        return
+
     try:
-        channel_id = int(event.pattern_match.group(1))
+        channel_id = int(match.group(1))
         if channel_id not in CHANNEL_IDS:
             CHANNEL_IDS.append(channel_id)
             save_data(CHANNEL_IDS, text_links,user_data)
@@ -143,14 +151,20 @@ async def add_channel(event):
         await event.respond('Invalid channel ID. Please use a valid integer.')
     logging.info(f"Current CHANNEL_IDS: {CHANNEL_IDS}")
 
-@client.on(events.NewMessage(pattern=r'/addlink (.+) (https?://[^\s]+)'))
+@client.on(events.NewMessage(pattern=r'/addlink'))
 async def add_link(event):
-    """Adds a text and link pair to the dictionary."""
+    """Adds a text and link pair to the dictionary with format validation."""
     if not check_user_status(event.sender_id):
          await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
          return
-    text = event.pattern_match.group(1).strip()
-    link = event.pattern_match.group(2)
+    full_command = event.text.strip()
+    match = re.match(r'/addlink (.+) (https?://[^\s]+)', full_command)
+    if not match:
+        await event.respond('Invalid command format. Use: /addlink text link (eg: /addlink mytext https://example.com)')
+        return
+
+    text = match.group(1).strip()
+    link = match.group(2)
     text_links[text] = link
     save_data(CHANNEL_IDS, text_links,user_data)
     await event.respond(f'Text "{text}" aur link "{link}" add ho gaya! 👍')
@@ -183,14 +197,20 @@ async def show_links(event):
         await event.respond('No links added yet.')
     logging.info(f"Current text_links: {text_links}")
 
-@client.on(events.NewMessage(pattern=r'/removechannel (-?\d+)'))
+@client.on(events.NewMessage(pattern=r'/removechannel'))
 async def remove_channel(event):
-    """Removes a channel from the list of monitored channels."""
+    """Removes a channel from the list of monitored channels with format validation."""
     if not check_user_status(event.sender_id):
          await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
          return
+    full_command = event.text.strip()
+    match = re.match(r'/removechannel (-?\d+)', full_command)
+    if not match:
+        await event.respond('Invalid command format. Use: /removechannel -100123456789')
+        return
+
     try:
-        channel_id = int(event.pattern_match.group(1))
+        channel_id = int(match.group(1))
         if channel_id in CHANNEL_IDS:
             CHANNEL_IDS.remove(channel_id)
             save_data(CHANNEL_IDS, text_links,user_data)
@@ -201,13 +221,20 @@ async def remove_channel(event):
             await event.respond('Invalid channel ID. Please use a valid integer.')
     logging.info(f"Current CHANNEL_IDS: {CHANNEL_IDS}")
 
-@client.on(events.NewMessage(pattern=r'/removelink (.+)'))
+@client.on(events.NewMessage(pattern=r'/removelink'))
 async def remove_link(event):
-    """Removes a text-link pair from the dictionary."""
+    """Removes a text-link pair from the dictionary with format validation."""
     if not check_user_status(event.sender_id):
         await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
         return
-    text = event.pattern_match.group(1).strip()
+
+    full_command = event.text.strip()
+    match = re.match(r'/removelink (.+)', full_command)
+    if not match:
+        await event.respond('Invalid command format. Use: /removelink text (eg: /removelink mytext)')
+        return
+        
+    text = match.group(1).strip()
     if text in text_links:
         del text_links[text]
         save_data(CHANNEL_IDS, text_links,user_data)
@@ -217,7 +244,7 @@ async def remove_link(event):
     logging.info(f"Current text_links: {text_links}")
 
 
-@client.on(events.NewMessage(pattern=r'/adminactivate (-?\d+)'))
+@client.on(events.NewMessage(pattern=r'/adminactivate'))
 async def activate_user(event):
     """Activates a user for 30 days after payment. Only admin can use this command."""
     if event.sender_id != ADMIN_ID:
@@ -228,8 +255,14 @@ async def activate_user(event):
         await event.respond("This command should be used in a private chat with the bot.")
         return
     
+    full_command = event.text.strip()
+    match = re.match(r'/adminactivate (-?\d+)', full_command)
+    if not match:
+        await event.respond('Invalid command format. Use: /adminactivate <user_id>')
+        return
+        
     try:
-        user_id_to_activate = int(event.pattern_match.group(1))
+        user_id_to_activate = int(match.group(1))
         if user_id_to_activate in user_data:
             user_data[user_id_to_activate]['start_date'] = datetime.now().isoformat()
             user_data[user_id_to_activate]['is_paid'] = True
@@ -243,7 +276,7 @@ async def activate_user(event):
     except ValueError:
        await event.respond('Invalid user ID. Please use a valid integer.')
 
-@client.on(events.NewMessage(pattern=r'/adminblock (-?\d+)'))
+@client.on(events.NewMessage(pattern=r'/adminblock'))
 async def block_user(event):
     """Blocks a user from using the bot. Only admin can use this command."""
     if event.sender_id != ADMIN_ID:
@@ -254,8 +287,14 @@ async def block_user(event):
         await event.respond("This command should be used in a private chat with the bot.")
         return
     
+    full_command = event.text.strip()
+    match = re.match(r'/adminblock (-?\d+)', full_command)
+    if not match:
+        await event.respond('Invalid command format. Use: /adminblock <user_id>')
+        return
+        
     try:
-        user_id_to_block = int(event.pattern_match.group(1))
+        user_id_to_block = int(match.group(1))
         if user_id_to_block in user_data:
             user_data[user_id_to_block]['is_blocked'] = True
             save_data(CHANNEL_IDS, text_links, user_data)
@@ -265,7 +304,7 @@ async def block_user(event):
     except ValueError:
        await event.respond('Invalid user ID. Please use a valid integer.')
     
-@client.on(events.NewMessage(pattern=r'/adminunblock (-?\d+)'))
+@client.on(events.NewMessage(pattern=r'/adminunblock'))
 async def unblock_user(event):
     """Unblocks a user from using the bot. Only admin can use this command."""
     if event.sender_id != ADMIN_ID:
@@ -276,8 +315,14 @@ async def unblock_user(event):
         await event.respond("This command should be used in a private chat with the bot.")
         return
     
+    full_command = event.text.strip()
+    match = re.match(r'/adminunblock (-?\d+)', full_command)
+    if not match:
+        await event.respond('Invalid command format. Use: /adminunblock <user_id>')
+        return
+    
     try:
-        user_id_to_unblock = int(event.pattern_match.group(1))
+        user_id_to_unblock = int(match.group(1))
         if user_id_to_unblock in user_data:
             user_data[user_id_to_unblock]['is_blocked'] = False
             save_data(CHANNEL_IDS, text_links, user_data)
