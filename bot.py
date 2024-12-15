@@ -15,11 +15,15 @@ NOTIFICATION_CHANNEL_ID = int(os.getenv('NOTIFICATION_CHANNEL_ID'))
 MONGODB_URL = os.getenv('MONGODB_URL')  # New environment variable
 
 # Database and collection names
-DB_NAME = "telegram_bot_db"  # You can change this if needed
-COLLECTION_NAME = "bot_data"  # You can change this if needed
+DB_NAME = "telegram_bot_db"
+COLLECTION_NAME = "bot_data"
 
 # Initialize MongoDB client
-client = MongoClient(MONGODB_URL)
+#Option 1
+#client = MongoClient(MONGODB_URL, tls=True, tlsAllowInvalidCertificates=True)
+# Option 2
+client = MongoClient(MONGODB_URL, ssl=True)
+
 db = client[DB_NAME]
 collection = db[COLLECTION_NAME]
 
@@ -61,7 +65,6 @@ client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOK
 # Set up logging
 logging.basicConfig(filename='bot.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-
 async def send_notification(message):
     """Sends a message to the specified notification channel."""
     try:
@@ -69,6 +72,7 @@ async def send_notification(message):
         logging.info(f"Notification sent to channel {NOTIFICATION_CHANNEL_ID}: {message}")
     except Exception as e:
         logging.error(f"Error sending notification: {e}")
+
 
 def is_trial_active(user_id):
     if user_id in user_data:
@@ -358,6 +362,7 @@ async def handle_chat_actions(event):
                await send_notification(f"Bot added to channel: {chat.title}")
        except Exception as e:
             logging.error(f"Error getting chat username: {e}")
+
 
 @client.on(events.NewMessage())
 async def add_links(event):
