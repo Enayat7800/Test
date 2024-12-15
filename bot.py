@@ -1,61 +1,80 @@
 import os
 import json
 from telethon import TelegramClient, events
-import pymongo
-from pymongo import MongoClient
+from datetime import datetime, timedelta
 
 # Environment variables
 API_ID = int(os.getenv('API_ID'))
 API_HASH = os.getenv('API_HASH')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-MONGODB_URL = os.getenv('MONGODB_URL') # New environment variable
 
+# File to store data
+DATA_FILE = 'bot_data.json'
 
-# Initialize MongoDB client and database
-client_mongo = None
-db = None
-if MONGODB_URL:
-    try:
-        client_mongo = MongoClient(MONGODB_URL)
-        db = client_mongo.get_default_database()
-    except pymongo.errors.ConnectionFailure as e:
-        print(f"Could not connect to MongoDB: {e}")
-
-
-# Function to load data from MongoDB
+# Load data from file or initialize if not exists
 def load_data():
-    if db:
-      try:
-        data = db.bot_data.find_one()
-        if data:
-          return data.get('channel_ids', []), data.get('text_links', {})
-        else:
-           return [], {}
-      except Exception as e:
-           print(f"Error loading data from MongoDB: {e}")
-           return [], {}
-    else:
-        return [], {}
+    try:
+        with open(DATA_FILE, 'r') as f:
+            data = json.load(f)
+            return (
+                data.get('channel_ids', []),
+                data.get('text_links', {}),
+                data.get('user_data', {})
+            )
+    except (FileNotFoundError, json.JSONDecodeError):
+        return [], {}, {}
 
 
-# Function to save data to MongoDB
-def save_data(channel_ids, text_links):
-    if db:
-        try:
-          db.bot_data.update_one({}, {'$set': {'channel_ids': channel_ids, 'text_links': text_links}}, upsert=True)
-        except Exception as e:
-          print(f"Error saving data to MongoDB: {e}")
+# Save data to file
+def save_data(channel_ids, text_links, user_data):
+    data = {
+        'channel_ids': channel_ids,
+        'text_links': text_links,
+        'user_data': user_data
+    }
+    with open(DATA_FILE, 'w') as f:
+        json.dump(data, f, indent=4)
 
 # Initialize the bot with data from storage
-CHANNEL_IDS, text_links = load_data()
+CHANNEL_IDS, text_links, user_data = load_data()
+
 
 # Initialize the client
 client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
+def is_trial_active(user_id):
+    if user_id in user_data:
+        start_date = datetime.fromisoformat(user_data[user_id]['start_date'])
+        trial_end_date = start_date + timedelta(days=3)
+        return datetime.now() <= trial_end_date, False
+
+    return True, True # New user always gets the free trail
+    
+def is_user_active(user_id):
+    if user_id in user_data:
+        if user_data[user_id].get('is_paid',False):
+            start_date = datetime.fromisoformat(user_data[user_id]['start_date'])
+            end_date = start_date + timedelta(days=30)
+            return datetime.now() <= end_date
+        else:
+             return is_trial_active(user_id)[0]
+    else:
+         return is_trial_active(user_id)[0]
 
 @client.on(events.NewMessage(pattern='/start'))
 async def start(event):
     """Sends a welcome message when the bot starts."""
+    user_id = event.sender_id
+    if not is_user_active(user_id):
+        await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+        return
+    
+    if user_id not in user_data:
+       user_data[user_id] = {
+        'start_date': datetime.now().isoformat(),
+        'is_paid':False
+    }
+       save_data(CHANNEL_IDS, text_links, user_data)
     await event.respond('Namaste! 🙏  Bot mein aapka swagat hai! \n\n'
                         'Ye bot aapke messages mein automatically links add kar dega.\n\n'
                         'Agar aapko koi problem ho ya help chahiye, to /help command use karein.\n\n'
@@ -69,16 +88,22 @@ async def start(event):
 @client.on(events.NewMessage(pattern='/help'))
 async def help(event):
     """Provides help and contact information."""
+    if not is_user_active(event.sender_id):
+          await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+          return
     await event.respond('Aapko koi bhi problem ho, to mujhe yahaan contact karein: @captain_stive')
 
 @client.on(events.NewMessage(pattern=r'/addchannel (-?\d+)'))
 async def add_channel(event):
     """Adds a channel ID to the list of monitored channels."""
+    if not is_user_active(event.sender_id):
+         await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+         return
     try:
         channel_id = int(event.pattern_match.group(1))
         if channel_id not in CHANNEL_IDS:
             CHANNEL_IDS.append(channel_id)
-            save_data(CHANNEL_IDS, text_links)
+            save_data(CHANNEL_IDS, text_links,user_data)
             await event.respond(f'Channel ID {channel_id} add ho gaya! 👍')
         else:
             await event.respond(f'Channel ID {channel_id} pahle se hi add hai! ⚠️')
@@ -89,16 +114,22 @@ async def add_channel(event):
 @client.on(events.NewMessage(pattern=r'/addlink (.+) (https?://[^\s]+)'))
 async def add_link(event):
     """Adds a text and link pair to the dictionary."""
+    if not is_user_active(event.sender_id):
+         await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+         return
     text = event.pattern_match.group(1).strip()  # Added .strip() to remove leading/trailing spaces
     link = event.pattern_match.group(2)
     text_links[text] = link
-    save_data(CHANNEL_IDS, text_links)
+    save_data(CHANNEL_IDS, text_links,user_data)
     await event.respond(f'Text "{text}" aur link "{link}" add ho gaya! 👍')
     print(f"Current text_links: {text_links}")  # Debugging line: show current text_links
 
 @client.on(events.NewMessage(pattern='/showchannels'))
 async def show_channels(event):
     """Shows the list of added channels."""
+    if not is_user_active(event.sender_id):
+         await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+         return
     if CHANNEL_IDS:
         channel_list = "\n".join([str(cid) for cid in CHANNEL_IDS])
         await event.respond(f'Current monitored channels:\n{channel_list}')
@@ -109,6 +140,9 @@ async def show_channels(event):
 @client.on(events.NewMessage(pattern='/showlinks'))
 async def show_links(event):
     """Shows the list of added text and links."""
+    if not is_user_active(event.sender_id):
+          await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+          return
     if text_links:
         link_list = "\n".join([f'{text}: {link}' for text, link in text_links.items()])
         await event.respond(f'Current links:\n{link_list}')
@@ -119,11 +153,14 @@ async def show_links(event):
 @client.on(events.NewMessage(pattern=r'/removechannel (-?\d+)'))
 async def remove_channel(event):
     """Removes a channel from the list of monitored channels."""
+    if not is_user_active(event.sender_id):
+          await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+          return
     try:
         channel_id = int(event.pattern_match.group(1))
         if channel_id in CHANNEL_IDS:
             CHANNEL_IDS.remove(channel_id)
-            save_data(CHANNEL_IDS, text_links)
+            save_data(CHANNEL_IDS, text_links,user_data)
             await event.respond(f'Channel ID {channel_id} removed! 👍')
         else:
              await event.respond(f'Channel ID {channel_id} not found! ⚠️')
@@ -134,18 +171,47 @@ async def remove_channel(event):
 @client.on(events.NewMessage(pattern=r'/removelink (.+)'))
 async def remove_link(event):
     """Removes a text-link pair from the dictionary."""
+    if not is_user_active(event.sender_id):
+          await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+          return
     text = event.pattern_match.group(1).strip()
     if text in text_links:
         del text_links[text]
-        save_data(CHANNEL_IDS, text_links)
+        save_data(CHANNEL_IDS, text_links,user_data)
         await event.respond(f'Link with text "{text}" removed! 👍')
     else:
          await event.respond(f'Link with text "{text}" not found! ⚠️')
     print(f"Current text_links: {text_links}")  # Debugging line: show current text_links
 
 
+@client.on(events.NewMessage(pattern=r'/activate (-?\d+)'))
+async def activate_user(event):
+    """Activates a user for 30 days after payment."""
+    if event.sender_id != event.chat_id:  # Check if the command is sent in private
+        await event.respond("This command should be used in a private chat with the bot.")
+        return
+
+    try:
+        user_id_to_activate = int(event.pattern_match.group(1))
+        if user_id_to_activate in user_data:
+            user_data[user_id_to_activate]['start_date'] = datetime.now().isoformat()
+            user_data[user_id_to_activate]['is_paid'] = True
+            save_data(CHANNEL_IDS, text_links, user_data)
+            await event.respond(f'User ID {user_id_to_activate} activated for 30 days! ✅')
+        else:
+             await event.respond(f'User ID {user_id_to_activate} not found! ⚠️')
+    except ValueError:
+       await event.respond('Invalid user ID. Please use a valid integer.')
+
+
 @client.on(events.NewMessage())
 async def add_links(event):
+    user_id = event.sender_id
+    if not is_user_active(user_id):
+        if event.is_private:
+             await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+             return
+        return
     if event.is_channel and event.chat_id in CHANNEL_IDS:
         print(f"Message received from channel ID: {event.chat_id}")
         message_text = event.message.message
@@ -158,6 +224,7 @@ async def add_links(event):
                 except Exception as e:
                     print(f"Error editing message in channel {event.chat_id}: {e}")
                 break
+
 
 # Start the bot
 with client:
