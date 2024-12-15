@@ -5,6 +5,9 @@ from datetime import datetime, timedelta
 import logging
 import re
 from pymongo import MongoClient
+from dotenv import load_dotenv
+
+load_dotenv()  # Load environment variables from .env file (if present)
 
 # Environment variables
 API_ID = int(os.getenv('API_ID'))
@@ -12,7 +15,8 @@ API_HASH = os.getenv('API_HASH')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID'))
 NOTIFICATION_CHANNEL_ID = int(os.getenv('NOTIFICATION_CHANNEL_ID'))
-MONGODB_URL = os.getenv('MONGODB_URL')  # New environment variable
+MONGODB_URL = os.getenv('MONGODB_URL', 'mongodb+srv://inayatalibarkaat:G2ts6PqdfIk60b9V@cluster0.w6fms.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0')  # Default value for Railway
+
 
 # Database and collection names
 DB_NAME = "telegram_bot_db"
@@ -51,7 +55,6 @@ def save_data(channel_ids, text_links, user_data):
         collection.replace_one({}, data, upsert=True)
     except Exception as e:
         logging.error(f"Error saving data to MongoDB: {e}")
-
 
 # Initialize the bot with data from storage
 CHANNEL_IDS, text_links, user_data = load_data()
