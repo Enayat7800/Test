@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 API_ID = int(os.getenv('API_ID'))
 API_HASH = os.getenv('API_HASH')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
+ADMIN_ID = int(os.getenv('ADMIN_ID'))  # Admin ID
 
 # File to store data
 DATA_FILE = 'bot_data.json'
@@ -195,9 +196,13 @@ async def remove_link(event):
     print(f"Current text_links: {text_links}")  # Debugging line: show current text_links
 
 
-@client.on(events.NewMessage(pattern=r'/activate (-?\d+)'))
+@client.on(events.NewMessage(pattern=r'/adminactivate (-?\d+)'))
 async def activate_user(event):
-    """Activates a user for 30 days after payment."""
+    """Activates a user for 30 days after payment. Only admin can use this command."""
+    if event.sender_id != ADMIN_ID:
+        await event.respond("You are not authorized to use this command.")
+        return
+
     if event.sender_id != event.chat_id:  # Check if the command is sent in private
         await event.respond("This command should be used in a private chat with the bot.")
         return
@@ -210,14 +215,20 @@ async def activate_user(event):
             user_data[user_id_to_activate]['is_blocked'] = False
             save_data(CHANNEL_IDS, text_links, user_data)
             await event.respond(f'User ID {user_id_to_activate} activated for 30 days! ✅')
+            # Send a congratulatory message to the user
+            await client.send_message(user_id_to_activate, "Congratulations! Your account has been activated for 30 days. Enjoy using the bot!")
         else:
              await event.respond(f'User ID {user_id_to_activate} not found! ⚠️')
     except ValueError:
        await event.respond('Invalid user ID. Please use a valid integer.')
 
-@client.on(events.NewMessage(pattern=r'/block (-?\d+)'))
+@client.on(events.NewMessage(pattern=r'/adminblock (-?\d+)'))
 async def block_user(event):
-    """Blocks a user from using the bot."""
+    """Blocks a user from using the bot. Only admin can use this command."""
+    if event.sender_id != ADMIN_ID:
+        await event.respond("You are not authorized to use this command.")
+        return
+
     if event.sender_id != event.chat_id:  # Check if the command is sent in private
         await event.respond("This command should be used in a private chat with the bot.")
         return
@@ -233,9 +244,13 @@ async def block_user(event):
     except ValueError:
        await event.respond('Invalid user ID. Please use a valid integer.')
     
-@client.on(events.NewMessage(pattern=r'/unblock (-?\d+)'))
+@client.on(events.NewMessage(pattern=r'/adminunblock (-?\d+)'))
 async def unblock_user(event):
-    """Unblocks a user from using the bot."""
+    """Unblocks a user from using the bot. Only admin can use this command."""
+    if event.sender_id != ADMIN_ID:
+        await event.respond("You are not authorized to use this command.")
+        return
+    
     if event.sender_id != event.chat_id:  # Check if the command is sent in private
         await event.respond("This command should be used in a private chat with the bot.")
         return
