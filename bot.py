@@ -19,10 +19,7 @@ DB_NAME = "telegram_bot_db"
 COLLECTION_NAME = "bot_data"
 
 # Initialize MongoDB client
-#Option 1
-#client = MongoClient(MONGODB_URL, tls=True, tlsAllowInvalidCertificates=True)
-# Option 2
-client = MongoClient(MONGODB_URL, ssl=True)
+client = MongoClient(MONGODB_URL, tls=True, tlsAllowInvalidCertificates=True)
 
 db = client[DB_NAME]
 collection = db[COLLECTION_NAME]
@@ -72,7 +69,6 @@ async def send_notification(message):
         logging.info(f"Notification sent to channel {NOTIFICATION_CHANNEL_ID}: {message}")
     except Exception as e:
         logging.error(f"Error sending notification: {e}")
-
 
 def is_trial_active(user_id):
     if user_id in user_data:
@@ -363,7 +359,6 @@ async def handle_chat_actions(event):
        except Exception as e:
             logging.error(f"Error getting chat username: {e}")
 
-
 @client.on(events.NewMessage())
 async def add_links(event):
     user_id = event.sender_id
@@ -383,6 +378,7 @@ async def add_links(event):
                 except Exception as e:
                     logging.error(f"Error editing message in channel {event.chat_id}: {e}")
                 break
+
 
 # Start the bot
 with client:
