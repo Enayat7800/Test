@@ -3,49 +3,40 @@ import json
 from telethon import TelegramClient, events
 from datetime import datetime, timedelta
 import logging
-import re
-from pymongo import MongoClient  # Import pymongo
-
+import re  # Import the regular expression module
 
 # Environment variables
 API_ID = int(os.getenv('API_ID'))
 API_HASH = os.getenv('API_HASH')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID'))
-NOTIFICATION_CHANNEL_ID = int(os.getenv('NOTIFICATION_CHANNEL_ID'))
+NOTIFICATION_CHANNEL_ID = int(os.getenv('NOTIFICATION_CHANNEL_ID'))  # New channel ID
 
-# MongoDB connection details
-MONGO_URL = os.getenv('MONGO_URL')  # Store your MongoDB URL in env variable
-MONGO_DB_NAME = 'telegram_bot_db'    # Replace with your DB name
+# File to store data
+DATA_FILE = 'bot_data.json'
 
-# Initialize MongoDB client
-client_mongo = MongoClient(MONGO_URL)
-db = client_mongo[MONGO_DB_NAME]
-bot_data_collection = db['bot_data']
-
-
-
-# Load data from MongoDB or initialize if not exists
+# Load data from file or initialize if not exists
 def load_data():
-    data = bot_data_collection.find_one()
-    if data:
-        return (
-            data.get('channel_ids', []),
-            data.get('text_links', {}),
-            data.get('user_data', {})
-        )
-    else:
+    try:
+        with open(DATA_FILE, 'r') as f:
+            data = json.load(f)
+            return (
+                data.get('channel_ids', []),
+                data.get('text_links', {}),
+                data.get('user_data', {})
+            )
+    except (FileNotFoundError, json.JSONDecodeError):
         return [], {}, {}
 
-# Save data to MongoDB
+# Save data to file
 def save_data(channel_ids, text_links, user_data):
     data = {
         'channel_ids': channel_ids,
         'text_links': text_links,
         'user_data': user_data
     }
-    bot_data_collection.update_one({}, {'$set': data}, upsert=True)
-
+    with open(DATA_FILE, 'w') as f:
+        json.dump(data, f, indent=4)
 
 # Initialize the bot with data from storage
 CHANNEL_IDS, text_links, user_data = load_data()
