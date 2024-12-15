@@ -81,7 +81,7 @@ def check_user_status(user_id):
         else:
             return is_user_active(user_id)
     else:
-        return is_user_active(user_id)
+        return is_trial_active(user_id)
 
 
 @client.on(events.NewMessage(pattern='/start'))
@@ -106,7 +106,7 @@ async def start(event):
     username = user.username if user.username else "N/A"
     await send_notification(f"New user started the bot:\nUser ID: {user_id}\nUsername: @{username}")
     
-    await event.respond('Namaste! 🙏  Bot mein aapka swagat hai! \n\n'
+    await event.respond('Namaste! 🙏 Captain Bot mein aapka swagat hai! \n\n'
                         'Ye bot aapke messages mein automatically links add kar dega.\n\n'
                         'Agar aapko koi problem ho ya help chahiye, to /help command use karein.\n\n'
                         'Naye channel add karne ke liye, /addchannel command use karein (jaise: /addchannel -100123456789).\n\n'
