@@ -23,7 +23,7 @@ DB_NAME = "telegram_bot_db"
 COLLECTION_NAME = "bot_data"
 
 # Initialize MongoDB client
-client = MongoClient(MONGODB_URL, tls=True, tlsAllowInvalidCertificates=True)
+client = MongoClient(MONGODB_URL, tls=True)
 
 db = client[DB_NAME]
 collection = db[COLLECTION_NAME]
