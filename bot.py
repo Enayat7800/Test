@@ -95,18 +95,18 @@ async def start(event):
        await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
        return
     
-    if user_id not in user_data:
+    is_new_user = user_id not in user_data
+    if is_new_user:
        user_data[user_id] = {
         'start_date': datetime.now().isoformat(),
         'is_paid':False,
         'is_blocked':False
-    }
+        }
        save_data(CHANNEL_IDS, text_links, user_data)
+       user = await client.get_entity(user_id)
+       username = user.username if user.username else "N/A"
+       await send_notification(f"New user started the bot:\nUser ID: {user_id}\nUsername: @{username}")
 
-    user = await client.get_entity(user_id)
-    username = user.username if user.username else "N/A"
-    await send_notification(f"New user started the bot:\nUser ID: {user_id}\nUsername: @{username}")
-    
     await event.respond('Namaste! 🙏  Bot mein aapka swagat hai! \n\n'
                         'Ye bot aapke messages mein automatically links add kar dega.\n\n'
                         'Agar aapko koi problem ho ya help chahiye, to /help command use karein.\n\n'
@@ -332,7 +332,20 @@ async def unblock_user(event):
     except ValueError:
        await event.respond('Invalid user ID. Please use a valid integer.')
     
-    
+@client.on(events.ChatAction)
+async def handle_chat_actions(event):
+    """Handles chat actions, specifically bot added to channel."""
+    if event.user_added and event.who == await client.get_me():
+       try:
+            chat = await client.get_entity(event.chat_id)
+            if chat.username:
+               await send_notification(f"Bot added to channel: @{chat.username}")
+            else:
+               await send_notification(f"Bot added to channel: {chat.title}")
+       except Exception as e:
+            logging.error(f"Error getting chat username: {e}")
+
+
 @client.on(events.NewMessage())
 async def add_links(event):
     user_id = event.sender_id
