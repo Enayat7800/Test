@@ -60,19 +60,30 @@ def is_user_active(user_id):
              return is_trial_active(user_id)[0]
     else:
          return is_trial_active(user_id)[0]
+    
+def check_user_status(user_id):
+    if user_id in user_data:
+        if user_data[user_id].get('is_blocked',False):
+            return False
+        else:
+            return is_user_active(user_id)
+    else:
+        return is_user_active(user_id)
+
 
 @client.on(events.NewMessage(pattern='/start'))
 async def start(event):
     """Sends a welcome message when the bot starts."""
     user_id = event.sender_id
-    if not is_user_active(user_id):
-        await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
-        return
+    if not check_user_status(user_id):
+       await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+       return
     
     if user_id not in user_data:
        user_data[user_id] = {
         'start_date': datetime.now().isoformat(),
-        'is_paid':False
+        'is_paid':False,
+        'is_blocked':False
     }
        save_data(CHANNEL_IDS, text_links, user_data)
     await event.respond('Namaste! 🙏  Bot mein aapka swagat hai! \n\n'
@@ -88,15 +99,15 @@ async def start(event):
 @client.on(events.NewMessage(pattern='/help'))
 async def help(event):
     """Provides help and contact information."""
-    if not is_user_active(event.sender_id):
-          await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
-          return
+    if not check_user_status(event.sender_id):
+       await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+       return
     await event.respond('Aapko koi bhi problem ho, to mujhe yahaan contact karein: @captain_stive')
 
 @client.on(events.NewMessage(pattern=r'/addchannel (-?\d+)'))
 async def add_channel(event):
     """Adds a channel ID to the list of monitored channels."""
-    if not is_user_active(event.sender_id):
+    if not check_user_status(event.sender_id):
          await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
          return
     try:
@@ -114,7 +125,7 @@ async def add_channel(event):
 @client.on(events.NewMessage(pattern=r'/addlink (.+) (https?://[^\s]+)'))
 async def add_link(event):
     """Adds a text and link pair to the dictionary."""
-    if not is_user_active(event.sender_id):
+    if not check_user_status(event.sender_id):
          await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
          return
     text = event.pattern_match.group(1).strip()  # Added .strip() to remove leading/trailing spaces
@@ -127,9 +138,9 @@ async def add_link(event):
 @client.on(events.NewMessage(pattern='/showchannels'))
 async def show_channels(event):
     """Shows the list of added channels."""
-    if not is_user_active(event.sender_id):
-         await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
-         return
+    if not check_user_status(event.sender_id):
+        await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+        return
     if CHANNEL_IDS:
         channel_list = "\n".join([str(cid) for cid in CHANNEL_IDS])
         await event.respond(f'Current monitored channels:\n{channel_list}')
@@ -140,9 +151,9 @@ async def show_channels(event):
 @client.on(events.NewMessage(pattern='/showlinks'))
 async def show_links(event):
     """Shows the list of added text and links."""
-    if not is_user_active(event.sender_id):
-          await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
-          return
+    if not check_user_status(event.sender_id):
+         await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+         return
     if text_links:
         link_list = "\n".join([f'{text}: {link}' for text, link in text_links.items()])
         await event.respond(f'Current links:\n{link_list}')
@@ -153,9 +164,9 @@ async def show_links(event):
 @client.on(events.NewMessage(pattern=r'/removechannel (-?\d+)'))
 async def remove_channel(event):
     """Removes a channel from the list of monitored channels."""
-    if not is_user_active(event.sender_id):
-          await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
-          return
+    if not check_user_status(event.sender_id):
+         await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+         return
     try:
         channel_id = int(event.pattern_match.group(1))
         if channel_id in CHANNEL_IDS:
@@ -171,9 +182,9 @@ async def remove_channel(event):
 @client.on(events.NewMessage(pattern=r'/removelink (.+)'))
 async def remove_link(event):
     """Removes a text-link pair from the dictionary."""
-    if not is_user_active(event.sender_id):
-          await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
-          return
+    if not check_user_status(event.sender_id):
+        await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+        return
     text = event.pattern_match.group(1).strip()
     if text in text_links:
         del text_links[text]
@@ -196,6 +207,7 @@ async def activate_user(event):
         if user_id_to_activate in user_data:
             user_data[user_id_to_activate]['start_date'] = datetime.now().isoformat()
             user_data[user_id_to_activate]['is_paid'] = True
+            user_data[user_id_to_activate]['is_blocked'] = False
             save_data(CHANNEL_IDS, text_links, user_data)
             await event.respond(f'User ID {user_id_to_activate} activated for 30 days! ✅')
         else:
@@ -203,14 +215,49 @@ async def activate_user(event):
     except ValueError:
        await event.respond('Invalid user ID. Please use a valid integer.')
 
+@client.on(events.NewMessage(pattern=r'/block (-?\d+)'))
+async def block_user(event):
+    """Blocks a user from using the bot."""
+    if event.sender_id != event.chat_id:  # Check if the command is sent in private
+        await event.respond("This command should be used in a private chat with the bot.")
+        return
+
+    try:
+        user_id_to_block = int(event.pattern_match.group(1))
+        if user_id_to_block in user_data:
+            user_data[user_id_to_block]['is_blocked'] = True
+            save_data(CHANNEL_IDS, text_links, user_data)
+            await event.respond(f'User ID {user_id_to_block} blocked! 🚫')
+        else:
+             await event.respond(f'User ID {user_id_to_block} not found! ⚠️')
+    except ValueError:
+       await event.respond('Invalid user ID. Please use a valid integer.')
+    
+@client.on(events.NewMessage(pattern=r'/unblock (-?\d+)'))
+async def unblock_user(event):
+    """Unblocks a user from using the bot."""
+    if event.sender_id != event.chat_id:  # Check if the command is sent in private
+        await event.respond("This command should be used in a private chat with the bot.")
+        return
+
+    try:
+        user_id_to_unblock = int(event.pattern_match.group(1))
+        if user_id_to_unblock in user_data:
+            user_data[user_id_to_unblock]['is_blocked'] = False
+            save_data(CHANNEL_IDS, text_links, user_data)
+            await event.respond(f'User ID {user_id_to_unblock} unblocked! ✅')
+        else:
+             await event.respond(f'User ID {user_id_to_unblock} not found! ⚠️')
+    except ValueError:
+       await event.respond('Invalid user ID. Please use a valid integer.')
+
 
 @client.on(events.NewMessage())
 async def add_links(event):
     user_id = event.sender_id
-    if not is_user_active(user_id):
+    if not check_user_status(user_id):
         if event.is_private:
-             await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
-             return
+            await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
         return
     if event.is_channel and event.chat_id in CHANNEL_IDS:
         print(f"Message received from channel ID: {event.chat_id}")
