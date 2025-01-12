@@ -22,7 +22,7 @@ def load_data():
             data = json.load(f)
             return (
                 data.get('channel_ids', []),
-                data.get('channel_text_links', {}),
+                data.get('channel_text_links', {}), # Changed text_links to channel_text_links
                 data.get('user_data', {}),
                 data.get('total_users', 0)
             )
@@ -30,10 +30,10 @@ def load_data():
         return [], {}, {}, 0
 
 # Save data to file
-def save_data(channel_ids, channel_text_links, user_data, total_users):
+def save_data(channel_ids, channel_text_links, user_data, total_users): # Changed text_links to channel_text_links
     data = {
         'channel_ids': channel_ids,
-        'channel_text_links': channel_text_links,
+        'channel_text_links': channel_text_links, # Changed text_links to channel_text_links
         'user_data': user_data,
         'total_users': total_users
     }
@@ -41,7 +41,7 @@ def save_data(channel_ids, channel_text_links, user_data, total_users):
         json.dump(data, f, indent=4)
 
 # Initialize the bot with data from storage
-CHANNEL_IDS, channel_text_links, user_data, total_users = load_data()
+CHANNEL_IDS, channel_text_links, user_data, total_users = load_data() # Changed text_links to channel_text_links
 
 # Initialize the client
 client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
@@ -86,8 +86,6 @@ def check_user_status(user_id):
     else:
         return is_trial_active(user_id)
 
-# Temporary variable to hold the selected channel
-selected_channel = None
 
 @client.on(events.NewMessage(pattern='/start'))
 async def start(event):
@@ -108,7 +106,7 @@ async def start(event):
         'is_blocked':False
         }
        total_users += 1  # Increment total_users for each new user
-       save_data(CHANNEL_IDS, channel_text_links, user_data,total_users)
+       save_data(CHANNEL_IDS, channel_text_links, user_data,total_users) # Changed text_links to channel_text_links
        user = await client.get_entity(user_id)
        username = user.username if user.username else "N/A"
        await send_notification(f"New user started the bot:\nUser ID: {user_id}\nUsername: @{username}")
@@ -130,12 +128,11 @@ async def all_commands(event):
         '/start - Bot ko start karne ke liye.\n'
         '/help - Bot ke support ke liye.\n'
         '/addchannel - Channel ID add karein (jaise: /addchannel -100123456789).\n'
-         '/selectchannel - Channel select karein (jaise: /selectchannel -100123456789).\n'
-        '/addlink - Text aur link add karein (jaise: /addlink text link) .\n'
+        '/addlink - Text aur link add karein (jaise: /addlink text link -100123456789) .\n'
         '/showchannels - Added channels dekhe.\n'
         '/showlinks - Added links dekhe.\n'
         '/removechannel - Channel remove karein (jaise: /removechannel -100123456789).\n'
-        '/removelink - Link remove karein (jaise: /removelink text) .\n'
+        '/removelink - Link remove karein (jaise: /removelink text -100123456789).\n'
         '/totalusers - Bot ko use krne wale users dekhe.\n'
         '/broadcast - Sab users ko msg bheje.\n'
     )
@@ -166,7 +163,7 @@ async def add_channel(event):
         channel_id = int(match.group(1))
         if channel_id not in CHANNEL_IDS:
             CHANNEL_IDS.append(channel_id)
-            save_data(CHANNEL_IDS, channel_text_links,user_data,total_users)
+            save_data(CHANNEL_IDS, channel_text_links,user_data,total_users) # Changed text_links to channel_text_links
             await event.respond(f'Channel ID {channel_id} add ho gaya! 👍')
             await send_notification(f"Channel added by user {event.sender_id}:\nChannel ID: {channel_id}")
         else:
@@ -175,64 +172,36 @@ async def add_channel(event):
         await event.respond('Invalid channel ID. Please use a valid integer.')
     logging.info(f"Current CHANNEL_IDS: {CHANNEL_IDS}")
 
-@client.on(events.NewMessage(pattern=r'/selectchannel'))
-async def select_channel(event):
-     """Selects the channel for adding links."""
-     global selected_channel
-     if not check_user_status(event.sender_id):
-        await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
-        return
-     full_command = event.text.strip()
-     match = re.match(r'/selectchannel (-?\d+)', full_command)
-     if not match:
-        await event.respond('Invalid command format. Use: /selectchannel -100123456789')
-        return
-     
-     try:
-         channel_id = int(match.group(1))
-         if channel_id in CHANNEL_IDS:
-            selected_channel = channel_id
-            await event.respond(f"Channel ID {channel_id} selected for adding links. 👍\n Ab aap /addlink command use karein.")
-         else:
-            await event.respond(f'Channel ID {channel_id} not found! ⚠️. Please add channel using /addchannel command first.')
-            selected_channel = None
-     except ValueError:
-        await event.respond('Invalid channel ID. Please use a valid integer.')
-        selected_channel = None
-     logging.info(f"Current selected_channel: {selected_channel}")
-    
-
 @client.on(events.NewMessage(pattern=r'/addlink'))
 async def add_link(event):
     """Adds a text and link pair to the dictionary with format validation."""
-    global selected_channel
     if not check_user_status(event.sender_id):
          await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
          return
 
-    if selected_channel is None:
-        await event.respond('Please select a channel first using /selectchannel command.')
-        return
-        
     full_command = event.text.strip()
-    match = re.match(r'/addlink (.+) (https?://[^\s]+)', full_command) # Removed channel_id regex
+    match = re.match(r'/addlink (.+) (https?://[^\s]+) (-?\d+)', full_command) # Added channel_id regex
 
     if not match:
-        await event.respond('Invalid command format. Use: /addlink text link (eg: /addlink mytext https://example.com)')
+        await event.respond('Invalid command format. Use: /addlink text link channel_id (eg: /addlink mytext https://example.com -100123456789)')
         return
 
     text = match.group(1).strip()
     link = match.group(2)
+    channel_id = int(match.group(3))
     
-    if selected_channel not in channel_text_links:
-        channel_text_links[selected_channel] = {}
+    if channel_id not in CHANNEL_IDS:
+        await event.respond(f"Channel ID {channel_id} is not added in the bot.")
+        return
+
+    if channel_id not in channel_text_links:
+        channel_text_links[channel_id] = {}
     
-    channel_text_links[selected_channel][text] = link
-    save_data(CHANNEL_IDS, channel_text_links, user_data,total_users)
-    await event.respond(f'Text "{text}" aur link "{link}" add ho gaya for channel ID {selected_channel}! 👍')
-    await send_notification(f"Link added by user {event.sender_id}:\nText: {text}\nLink: {link}\nChannel ID: {selected_channel}")
-    logging.info(f"Current channel_text_links: {channel_text_links}")
-    selected_channel = None # Reset the selected channel to None
+    channel_text_links[channel_id][text] = link
+    save_data(CHANNEL_IDS, channel_text_links, user_data,total_users) # Changed text_links to channel_text_links
+    await event.respond(f'Text "{text}" aur link "{link}" add ho gaya for channel ID {channel_id}! 👍')
+    await send_notification(f"Link added by user {event.sender_id}:\nText: {text}\nLink: {link}\nChannel ID: {channel_id}")
+    logging.info(f"Current channel_text_links: {channel_text_links}") # Changed text_links to channel_text_links
 
 @client.on(events.NewMessage(pattern='/showchannels'))
 async def show_channels(event):
@@ -253,7 +222,7 @@ async def show_links(event):
     if not check_user_status(event.sender_id):
          await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
          return
-    if channel_text_links:
+    if channel_text_links: # Changed text_links to channel_text_links
         formatted_links = []
         for channel_id, links in channel_text_links.items():
              formatted_links.append(f'Channel ID: {channel_id}')
@@ -262,7 +231,7 @@ async def show_links(event):
         await event.respond(f'Current links:\n{"\n".join(formatted_links)}')
     else:
         await event.respond('No links added yet.')
-    logging.info(f"Current channel_text_links: {channel_text_links}")
+    logging.info(f"Current channel_text_links: {channel_text_links}") # Changed text_links to channel_text_links
 
 @client.on(events.NewMessage(pattern=r'/removechannel'))
 async def remove_channel(event):
@@ -280,9 +249,9 @@ async def remove_channel(event):
         channel_id = int(match.group(1))
         if channel_id in CHANNEL_IDS:
             CHANNEL_IDS.remove(channel_id)
-            if channel_id in channel_text_links:
-                del channel_text_links[channel_id]
-            save_data(CHANNEL_IDS, channel_text_links,user_data,total_users)
+            if channel_id in channel_text_links: # Changed text_links to channel_text_links
+                del channel_text_links[channel_id] # Changed text_links to channel_text_links
+            save_data(CHANNEL_IDS, channel_text_links,user_data,total_users) # Changed text_links to channel_text_links
             await event.respond(f'Channel ID {channel_id} removed! 👍')
         else:
              await event.respond(f'Channel ID {channel_id} not found! ⚠️')
@@ -293,35 +262,30 @@ async def remove_channel(event):
 @client.on(events.NewMessage(pattern=r'/removelink'))
 async def remove_link(event):
     """Removes a text-link pair from the dictionary with format validation."""
-    global selected_channel
     if not check_user_status(event.sender_id):
         await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
         return
-    
-    if selected_channel is None:
-        await event.respond('Please select a channel first using /selectchannel command.')
-        return
-    
-    full_command = event.text.strip()
-    match = re.match(r'/removelink (.+)', full_command) # Removed channel_id regex
-    if not match:
-        await event.respond('Invalid command format. Use: /removelink text (eg: /removelink mytext)')
-        return
-    
-    text = match.group(1).strip()
 
-    if selected_channel not in channel_text_links or text not in channel_text_links[selected_channel]:
-       await event.respond(f'Link with text "{text}" not found for channel ID {selected_channel}! ⚠️')
+    full_command = event.text.strip()
+    match = re.match(r'/removelink (.+) (-?\d+)', full_command) # Added channel_id regex
+
+    if not match:
+        await event.respond('Invalid command format. Use: /removelink text channel_id (eg: /removelink mytext -100123456789)')
+        return
+        
+    text = match.group(1).strip()
+    channel_id = int(match.group(2))
+
+    if channel_id not in channel_text_links or text not in channel_text_links[channel_id]: # Changed text_links to channel_text_links
+       await event.respond(f'Link with text "{text}" not found for channel ID {channel_id}! ⚠️')
        return
     
-    del channel_text_links[selected_channel][text]
-    if not channel_text_links[selected_channel]:
-         del channel_text_links[selected_channel]
-    save_data(CHANNEL_IDS, channel_text_links, user_data, total_users)
-    await event.respond(f'Link with text "{text}" removed for channel ID {selected_channel}! 👍')
-    logging.info(f"Current channel_text_links: {channel_text_links}")
-    selected_channel = None # Reset the selected channel to None
-
+    del channel_text_links[channel_id][text] # Changed text_links to channel_text_links
+    if not channel_text_links[channel_id]:
+        del channel_text_links[channel_id]
+    save_data(CHANNEL_IDS, channel_text_links, user_data, total_users) # Changed text_links to channel_text_links
+    await event.respond(f'Link with text "{text}" removed for channel ID {channel_id}! 👍')
+    logging.info(f"Current channel_text_links: {channel_text_links}") # Changed text_links to channel_text_links
 
 @client.on(events.NewMessage(pattern='/totalusers'))
 async def total_users_command(event):
@@ -385,7 +349,7 @@ async def activate_user(event):
             user_data[user_id_to_activate]['start_date'] = datetime.now().isoformat()
             user_data[user_id_to_activate]['is_paid'] = True
             user_data[user_id_to_activate]['is_blocked'] = False
-            save_data(CHANNEL_IDS, channel_text_links, user_data,total_users)
+            save_data(CHANNEL_IDS, channel_text_links, user_data,total_users) # Changed text_links to channel_text_links
             await event.respond(f'User ID {user_id_to_activate} activated for 30 days! ✅')
             # Send a congratulatory message to the user
             await client.send_message(user_id_to_activate, "Congratulations! Your account has been activated for 30 days. Enjoy using the bot!")
@@ -415,7 +379,7 @@ async def block_user(event):
         user_id_to_block = int(match.group(1))
         if user_id_to_block in user_data:
             user_data[user_id_to_block]['is_blocked'] = True
-            save_data(CHANNEL_IDS, channel_text_links, user_data,total_users)
+            save_data(CHANNEL_IDS, channel_text_links, user_data,total_users) # Changed text_links to channel_text_links
             await event.respond(f'User ID {user_id_to_block} blocked! 🚫')
         else:
              await event.respond(f'User ID {user_id_to_block} not found! ⚠️')
@@ -443,7 +407,7 @@ async def unblock_user(event):
         user_id_to_unblock = int(match.group(1))
         if user_id_to_unblock in user_data:
             user_data[user_id_to_unblock]['is_blocked'] = False
-            save_data(CHANNEL_IDS, channel_text_links, user_data,total_users)
+            save_data(CHANNEL_IDS, channel_text_links, user_data,total_users) # Changed text_links to channel_text_links
             await event.respond(f'User ID {user_id_to_unblock} unblocked! ✅')
         else:
              await event.respond(f'User ID {user_id_to_unblock} not found! ⚠️')
@@ -474,8 +438,8 @@ async def add_links(event):
     if event.is_channel and event.chat_id in CHANNEL_IDS:
         logging.info(f"Message received from channel ID: {event.chat_id}")
         message_text = event.message.message
-        if event.chat_id in channel_text_links:
-             for text, link in channel_text_links[event.chat_id].items():
+        if event.chat_id in channel_text_links: # Changed text_links to channel_text_links
+             for text, link in channel_text_links[event.chat_id].items(): # Changed text_links to channel_text_links
                  if message_text.strip() == text:
                      new_message_text = f"{text}\n{link}"
                      try:
