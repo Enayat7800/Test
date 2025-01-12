@@ -3,14 +3,14 @@ import json
 from telethon import TelegramClient, events
 from datetime import datetime, timedelta
 import logging
-import re  # Import the regular expression module
+import re
 
 # Environment variables
 API_ID = int(os.getenv('API_ID'))
 API_HASH = os.getenv('API_HASH')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID'))
-NOTIFICATION_CHANNEL_ID = int(os.getenv('NOTIFICATION_CHANNEL_ID'))  # New channel ID
+NOTIFICATION_CHANNEL_ID = int(os.getenv('NOTIFICATION_CHANNEL_ID'))
 
 # File to store data
 DATA_FILE = 'bot_data.json'
@@ -24,24 +24,26 @@ def load_data():
                 data.get('channel_ids', []),
                 data.get('text_links', {}),
                 data.get('user_data', {}),
-                 data.get('total_users', 0)
+                 data.get('total_users', 0),
+                data.get('active_channel_id', None)
             )
     except (FileNotFoundError, json.JSONDecodeError):
-        return [], {}, {}, 0
+        return [], {}, {}, 0, None
 
 # Save data to file
-def save_data(channel_ids, text_links, user_data,total_users):
+def save_data(channel_ids, text_links, user_data,total_users,active_channel_id):
     data = {
         'channel_ids': channel_ids,
         'text_links': text_links,
         'user_data': user_data,
-        'total_users': total_users
+        'total_users': total_users,
+        'active_channel_id': active_channel_id
     }
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f, indent=4)
 
 # Initialize the bot with data from storage
-CHANNEL_IDS, text_links, user_data, total_users = load_data()
+CHANNEL_IDS, text_links, user_data, total_users, active_channel_id = load_data()
 
 # Initialize the client
 client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
@@ -106,7 +108,7 @@ async def start(event):
         'is_blocked':False
         }
        total_users += 1  # Increment total_users for each new user
-       save_data(CHANNEL_IDS, text_links, user_data,total_users)
+       save_data(CHANNEL_IDS, text_links, user_data,total_users,active_channel_id)
        user = await client.get_entity(user_id)
        username = user.username if user.username else "N/A"
        await send_notification(f"New user started the bot:\nUser ID: {user_id}\nUsername: @{username}")
@@ -135,6 +137,8 @@ async def all_commands(event):
         '/removelink - Link remove karein (jaise: /removelink text).\n'
         '/totalusers - Bot ko use krne wale users dekhe.\n'
         '/broadcast - Sab users ko msg bheje.\n'
+        '/selectchannel - Channel select karein (jaise: /selectchannel -100123456789).\n'
+        '/deselectchannel - Channel deselect karein.\n'
     )
     await event.respond(f'Bot commands:\n\n{commands_list}')
 
@@ -163,7 +167,7 @@ async def add_channel(event):
         channel_id = int(match.group(1))
         if channel_id not in CHANNEL_IDS:
             CHANNEL_IDS.append(channel_id)
-            save_data(CHANNEL_IDS, text_links,user_data,total_users)
+            save_data(CHANNEL_IDS, text_links,user_data,total_users,active_channel_id)
             await event.respond(f'Channel ID {channel_id} add ho gaya! 👍')
             await send_notification(f"Channel added by user {event.sender_id}:\nChannel ID: {channel_id}")
         else:
@@ -187,7 +191,7 @@ async def add_link(event):
     text = match.group(1).strip()
     link = match.group(2)
     text_links[text] = link
-    save_data(CHANNEL_IDS, text_links,user_data,total_users)
+    save_data(CHANNEL_IDS, text_links,user_data,total_users,active_channel_id)
     await event.respond(f'Text "{text}" aur link "{link}" add ho gaya! 👍')
     await send_notification(f"Link added by user {event.sender_id}:\nText: {text}\nLink: {link}")
     logging.info(f"Current text_links: {text_links}")
@@ -234,7 +238,7 @@ async def remove_channel(event):
         channel_id = int(match.group(1))
         if channel_id in CHANNEL_IDS:
             CHANNEL_IDS.remove(channel_id)
-            save_data(CHANNEL_IDS, text_links,user_data,total_users)
+            save_data(CHANNEL_IDS, text_links,user_data,total_users,active_channel_id)
             await event.respond(f'Channel ID {channel_id} removed! 👍')
         else:
              await event.respond(f'Channel ID {channel_id} not found! ⚠️')
@@ -258,7 +262,7 @@ async def remove_link(event):
     text = match.group(1).strip()
     if text in text_links:
         del text_links[text]
-        save_data(CHANNEL_IDS, text_links,user_data,total_users)
+        save_data(CHANNEL_IDS, text_links,user_data,total_users,active_channel_id)
         await event.respond(f'Link with text "{text}" removed! 👍')
     else:
          await event.respond(f'Link with text "{text}" not found! ⚠️')
@@ -302,8 +306,6 @@ async def broadcast_message(event):
 
     await event.respond(f"Broadcast message sent to {sent_count} users.")
 
-
-
 @client.on(events.NewMessage(pattern=r'/adminactivate'))
 async def activate_user(event):
     """Activates a user for 30 days after payment. Only admin can use this command."""
@@ -327,7 +329,7 @@ async def activate_user(event):
             user_data[user_id_to_activate]['start_date'] = datetime.now().isoformat()
             user_data[user_id_to_activate]['is_paid'] = True
             user_data[user_id_to_activate]['is_blocked'] = False
-            save_data(CHANNEL_IDS, text_links, user_data,total_users)
+            save_data(CHANNEL_IDS, text_links, user_data,total_users,active_channel_id)
             await event.respond(f'User ID {user_id_to_activate} activated for 30 days! ✅')
             # Send a congratulatory message to the user
             await client.send_message(user_id_to_activate, "Congratulations! Your account has been activated for 30 days. Enjoy using the bot!")
@@ -357,7 +359,7 @@ async def block_user(event):
         user_id_to_block = int(match.group(1))
         if user_id_to_block in user_data:
             user_data[user_id_to_block]['is_blocked'] = True
-            save_data(CHANNEL_IDS, text_links, user_data,total_users)
+            save_data(CHANNEL_IDS, text_links, user_data,total_users,active_channel_id)
             await event.respond(f'User ID {user_id_to_block} blocked! 🚫')
         else:
              await event.respond(f'User ID {user_id_to_block} not found! ⚠️')
@@ -385,7 +387,7 @@ async def unblock_user(event):
         user_id_to_unblock = int(match.group(1))
         if user_id_to_unblock in user_data:
             user_data[user_id_to_unblock]['is_blocked'] = False
-            save_data(CHANNEL_IDS, text_links, user_data,total_users)
+            save_data(CHANNEL_IDS, text_links, user_data,total_users,active_channel_id)
             await event.respond(f'User ID {user_id_to_unblock} unblocked! ✅')
         else:
              await event.respond(f'User ID {user_id_to_unblock} not found! ⚠️')
@@ -404,7 +406,50 @@ async def handle_chat_actions(event):
                await send_notification(f"Bot added to channel: {chat.title}")
        except Exception as e:
             logging.error(f"Error getting chat username: {e}")
+    
+@client.on(events.NewMessage(pattern=r'/selectchannel'))
+async def select_channel(event):
+    """Selects a channel for applying link replacements with format validation."""
+    global active_channel_id
+    if not check_user_status(event.sender_id):
+         await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+         return
 
+    full_command = event.text.strip()
+    match = re.match(r'/selectchannel (-?\d+)', full_command)
+    if not match:
+        await event.respond('Invalid command format. Use: /selectchannel -100123456789')
+        return
+
+    try:
+        channel_id = int(match.group(1))
+        if channel_id in CHANNEL_IDS:
+            active_channel_id = channel_id
+            save_data(CHANNEL_IDS, text_links, user_data, total_users,active_channel_id)
+            await event.respond(f'Channel ID {channel_id} selected for link replacement! ✅')
+            await send_notification(f"Active channel selected by user {event.sender_id}: Channel ID: {channel_id}")
+        else:
+            await event.respond(f'Channel ID {channel_id} not found in the added channels! ⚠️')
+
+    except ValueError:
+            await event.respond('Invalid channel ID. Please use a valid integer.')
+    logging.info(f"Active Channel ID: {active_channel_id}")
+
+@client.on(events.NewMessage(pattern=r'/deselectchannel'))
+async def deselect_channel(event):
+    """Deselects the active channel."""
+    global active_channel_id
+    if not check_user_status(event.sender_id):
+         await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+         return
+    if active_channel_id is not None:
+        active_channel_id = None
+        save_data(CHANNEL_IDS, text_links, user_data, total_users,active_channel_id)
+        await event.respond('Active channel deselected. Link replacements will not be applied until a channel is selected. ✅')
+        await send_notification(f"Active channel deselected by user {event.sender_id}")
+    else:
+        await event.respond('No channel is currently selected as active channel. ⚠️')
+    logging.info(f"Active Channel ID: {active_channel_id}")
 
 @client.on(events.NewMessage())
 async def add_links(event):
@@ -413,7 +458,8 @@ async def add_links(event):
         if event.is_private:
             await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
         return
-    if event.is_channel and event.chat_id in CHANNEL_IDS:
+
+    if event.is_channel and event.chat_id == active_channel_id:
         logging.info(f"Message received from channel ID: {event.chat_id}")
         message_text = event.message.message
         for text, link in text_links.items():
