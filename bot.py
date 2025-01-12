@@ -23,23 +23,25 @@ def load_data():
             return (
                 data.get('channel_ids', []),
                 data.get('text_links', {}),
-                data.get('user_data', {})
+                data.get('user_data', {}),
+                 data.get('total_users', 0)
             )
     except (FileNotFoundError, json.JSONDecodeError):
-        return [], {}, {}
+        return [], {}, {}, 0
 
 # Save data to file
-def save_data(channel_ids, text_links, user_data):
+def save_data(channel_ids, text_links, user_data,total_users):
     data = {
         'channel_ids': channel_ids,
         'text_links': text_links,
-        'user_data': user_data
+        'user_data': user_data,
+        'total_users': total_users
     }
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f, indent=4)
 
 # Initialize the bot with data from storage
-CHANNEL_IDS, text_links, user_data = load_data()
+CHANNEL_IDS, text_links, user_data, total_users = load_data()
 
 # Initialize the client
 client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
@@ -88,6 +90,7 @@ def check_user_status(user_id):
 @client.on(events.NewMessage(pattern='/start'))
 async def start(event):
     """Sends a welcome message when the bot starts."""
+    global total_users  # Use the global keyword to modify total_users
     user_id = event.sender_id
     logging.info(f"User ID {user_id} used /start command.")
 
@@ -102,7 +105,8 @@ async def start(event):
         'is_paid':False,
         'is_blocked':False
         }
-       save_data(CHANNEL_IDS, text_links, user_data)
+       total_users += 1  # Increment total_users for each new user
+       save_data(CHANNEL_IDS, text_links, user_data,total_users)
        user = await client.get_entity(user_id)
        username = user.username if user.username else "N/A"
        await send_notification(f"New user started the bot:\nUser ID: {user_id}\nUsername: @{username}")
@@ -129,6 +133,8 @@ async def all_commands(event):
         '/showlinks - Added links dekhe.\n'
         '/removechannel - Channel remove karein (jaise: /removechannel -100123456789).\n'
         '/removelink - Link remove karein (jaise: /removelink text).\n'
+        '/totalusers - Bot ko use krne wale users dekhe.\n'
+        '/broadcast - Sab users ko msg bheje.\n'
     )
     await event.respond(f'Bot commands:\n\n{commands_list}')
 
@@ -157,7 +163,7 @@ async def add_channel(event):
         channel_id = int(match.group(1))
         if channel_id not in CHANNEL_IDS:
             CHANNEL_IDS.append(channel_id)
-            save_data(CHANNEL_IDS, text_links,user_data)
+            save_data(CHANNEL_IDS, text_links,user_data,total_users)
             await event.respond(f'Channel ID {channel_id} add ho gaya! 👍')
             await send_notification(f"Channel added by user {event.sender_id}:\nChannel ID: {channel_id}")
         else:
@@ -181,7 +187,7 @@ async def add_link(event):
     text = match.group(1).strip()
     link = match.group(2)
     text_links[text] = link
-    save_data(CHANNEL_IDS, text_links,user_data)
+    save_data(CHANNEL_IDS, text_links,user_data,total_users)
     await event.respond(f'Text "{text}" aur link "{link}" add ho gaya! 👍')
     await send_notification(f"Link added by user {event.sender_id}:\nText: {text}\nLink: {link}")
     logging.info(f"Current text_links: {text_links}")
@@ -228,7 +234,7 @@ async def remove_channel(event):
         channel_id = int(match.group(1))
         if channel_id in CHANNEL_IDS:
             CHANNEL_IDS.remove(channel_id)
-            save_data(CHANNEL_IDS, text_links,user_data)
+            save_data(CHANNEL_IDS, text_links,user_data,total_users)
             await event.respond(f'Channel ID {channel_id} removed! 👍')
         else:
              await event.respond(f'Channel ID {channel_id} not found! ⚠️')
@@ -252,11 +258,50 @@ async def remove_link(event):
     text = match.group(1).strip()
     if text in text_links:
         del text_links[text]
-        save_data(CHANNEL_IDS, text_links,user_data)
+        save_data(CHANNEL_IDS, text_links,user_data,total_users)
         await event.respond(f'Link with text "{text}" removed! 👍')
     else:
          await event.respond(f'Link with text "{text}" not found! ⚠️')
     logging.info(f"Current text_links: {text_links}")
+
+@client.on(events.NewMessage(pattern='/totalusers'))
+async def total_users_command(event):
+    """Displays the total number of users who have used the bot. Only for admin."""
+    if event.sender_id == ADMIN_ID:
+        await event.respond(f"Total users who have started the bot: {total_users}")
+    else:
+         await event.respond("You are not authorized to use this command.")
+
+@client.on(events.NewMessage(pattern='/broadcast'))
+async def broadcast_message(event):
+    """Sends a message to all users who have started the bot. Only for admin."""
+    if event.sender_id != ADMIN_ID:
+        await event.respond("You are not authorized to use this command.")
+        return
+    
+    if event.sender_id != event.chat_id:  # Check if the command is sent in private
+        await event.respond("This command should be used in a private chat with the bot.")
+        return
+    
+    full_command = event.text.strip()
+    match = re.match(r'/broadcast (.+)', full_command, re.DOTALL)
+    if not match:
+        await event.respond('Invalid command format. Use: /broadcast <message>')
+        return
+
+    message_to_send = match.group(1).strip()
+    sent_count = 0
+    
+    for user_id in user_data:
+       try:
+          await client.send_message(user_id, message_to_send)
+          sent_count += 1
+          logging.info(f"Broadcast msg send to: {user_id}")
+       except Exception as e:
+           logging.error(f"Error sending broadcast message to {user_id}: {e}")
+
+    await event.respond(f"Broadcast message sent to {sent_count} users.")
+
 
 
 @client.on(events.NewMessage(pattern=r'/adminactivate'))
@@ -282,7 +327,7 @@ async def activate_user(event):
             user_data[user_id_to_activate]['start_date'] = datetime.now().isoformat()
             user_data[user_id_to_activate]['is_paid'] = True
             user_data[user_id_to_activate]['is_blocked'] = False
-            save_data(CHANNEL_IDS, text_links, user_data)
+            save_data(CHANNEL_IDS, text_links, user_data,total_users)
             await event.respond(f'User ID {user_id_to_activate} activated for 30 days! ✅')
             # Send a congratulatory message to the user
             await client.send_message(user_id_to_activate, "Congratulations! Your account has been activated for 30 days. Enjoy using the bot!")
@@ -312,7 +357,7 @@ async def block_user(event):
         user_id_to_block = int(match.group(1))
         if user_id_to_block in user_data:
             user_data[user_id_to_block]['is_blocked'] = True
-            save_data(CHANNEL_IDS, text_links, user_data)
+            save_data(CHANNEL_IDS, text_links, user_data,total_users)
             await event.respond(f'User ID {user_id_to_block} blocked! 🚫')
         else:
              await event.respond(f'User ID {user_id_to_block} not found! ⚠️')
@@ -340,7 +385,7 @@ async def unblock_user(event):
         user_id_to_unblock = int(match.group(1))
         if user_id_to_unblock in user_data:
             user_data[user_id_to_unblock]['is_blocked'] = False
-            save_data(CHANNEL_IDS, text_links, user_data)
+            save_data(CHANNEL_IDS, text_links, user_data,total_users)
             await event.respond(f'User ID {user_id_to_unblock} unblocked! ✅')
         else:
              await event.respond(f'User ID {user_id_to_unblock} not found! ⚠️')
