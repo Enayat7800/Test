@@ -130,7 +130,7 @@ async def all_commands(event):
         '/start - Bot ko start karne ke liye.\n'
         '/help - Bot ke support ke liye.\n'
         '/addchannel - Channel ID add karein (jaise: /addchannel -100123456789).\n'
-         '/selectchannel - Channel select karein (jaise: /selectchannel -100123456789).\n'
+        '/selectchannel - Channel select karein (jaise: /selectchannel -100123456789).\n'
         '/addlink - Text aur link add karein (jaise: /addlink text link) .\n'
         '/showchannels - Added channels dekhe.\n'
         '/showlinks - Added links dekhe.\n'
@@ -191,8 +191,8 @@ async def select_channel(event):
      try:
          channel_id = int(match.group(1))
          if channel_id in CHANNEL_IDS:
-            selected_channel = channel_id
-            await event.respond(f"Channel ID {channel_id} selected for adding links. 👍\n Ab aap /addlink command use karein.")
+             selected_channel = channel_id
+             await event.respond(f"Channel ID {channel_id} selected for adding links. 👍\nAb aap /addlink command use karein.")
          else:
             await event.respond(f'Channel ID {channel_id} not found! ⚠️. Please add channel using /addchannel command first.')
             selected_channel = None
@@ -315,7 +315,7 @@ async def remove_link(event):
     
     del channel_text_links[selected_channel][text]
     if not channel_text_links[selected_channel]:
-         del channel_text_links[selected_channel]
+        del channel_text_links[selected_channel]
     save_data(CHANNEL_IDS, channel_text_links, user_data, total_users)
     await event.respond(f'Link with text "{text}" removed for channel ID {selected_channel}! 👍')
     logging.info(f"Current channel_text_links: {channel_text_links}")
