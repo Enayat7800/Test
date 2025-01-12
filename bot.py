@@ -107,15 +107,30 @@ async def start(event):
        username = user.username if user.username else "N/A"
        await send_notification(f"New user started the bot:\nUser ID: {user_id}\nUsername: @{username}")
 
-    await event.respond('Namaste! 🙏  Bot mein aapka swagat hai! \n\n'
-                        'Ye bot aapke messages mein automatically links add kar dega.\n\n'
-                        'Agar aapko koi problem ho ya help chahiye, to /help command use karein.\n\n'
-                        'Naye channel add karne ke liye, /addchannel command use karein (jaise: /addchannel -100123456789).\n\n'
-                        'Text aur link add karne ke liye /addlink command use karein (jaise: /addlink text link).\n\n'
-                         'Agar aapko added channel dekhna hai to /showchannels command use karein.\n\n'
-                         'Agar aapko added links dekhna hai to /showlinks command use karein.\n\n'
-                         'Agar channel remove karna hai to /removechannel command use karein (jaise: /removechannel -100123456789).\n\n'
-                         'Agar link remove karna hai to /removelink command use karein (jaise: /removelink text).')
+    welcome_message = 'Namaste! 🙏 Bot mein aapka swagat hai! \n\n' \
+                      'Ye bot aapke messages mein automatically links add kar dega.\n\n' \
+                      'Agar aapko koi problem ho ya help chahiye, to /help command use karein.\n\n' \
+                      'Bot ke sabhi commands dekhne ke liye /allcommands type karein.\n\n'
+    await event.respond(welcome_message)
+
+
+@client.on(events.NewMessage(pattern='/allcommands'))
+async def all_commands(event):
+    """Sends a list of all available commands."""
+    if not check_user_status(event.sender_id):
+        await event.respond(f'Aapki free trial khatam ho gyi hai, please contact kare @captain_stive')
+        return
+    commands_list = (
+        '/start - Bot ko start karne ke liye.\n'
+        '/help - Bot ke support ke liye.\n'
+        '/addchannel - Channel ID add karein (jaise: /addchannel -100123456789).\n'
+        '/addlink - Text aur link add karein (jaise: /addlink text link).\n'
+        '/showchannels - Added channels dekhe.\n'
+        '/showlinks - Added links dekhe.\n'
+        '/removechannel - Channel remove karein (jaise: /removechannel -100123456789).\n'
+        '/removelink - Link remove karein (jaise: /removelink text).\n'
+    )
+    await event.respond(f'Bot commands:\n\n{commands_list}')
 
 @client.on(events.NewMessage(pattern='/help'))
 async def help(event):
