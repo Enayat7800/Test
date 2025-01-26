@@ -1,2 +1,3 @@
+pymongo[srv]
 telethon
-pymongo
+python-dotenv
