@@ -4,6 +4,10 @@ from telethon import TelegramClient, events
 from datetime import datetime, timedelta
 import logging
 import re
+from pymongo import MongoClient
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Environment variables
 API_ID = int(os.getenv('API_ID'))
@@ -11,39 +15,70 @@ API_HASH = os.getenv('API_HASH')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID'))
 NOTIFICATION_CHANNEL_ID = int(os.getenv('NOTIFICATION_CHANNEL_ID'))
+MONGO_URL = os.getenv('MONGO_URL')
 
 # File to store data
 DATA_FILE = 'bot_data.json'
 
-# Load data from file or initialize if not exists
-def load_data():
-    try:
-        with open(DATA_FILE, 'r') as f:
-            data = json.load(f)
-            return (
-                data.get('channel_ids', []),
-                data.get('text_links', {}),
-                data.get('user_data', {}),
-                 data.get('total_users', 0),
-                data.get('active_channel_id', None)
-            )
-    except (FileNotFoundError, json.JSONDecodeError):
-        return [], {}, {}, 0, None
+# Initialize MongoDB client
+mongo_client = MongoClient(MONGO_URL)
+db = mongo_client.telegram_bot
+bot_data_collection = db.bot_data
+user_data_collection = db.user_data
 
-# Save data to file
-def save_data(channel_ids, text_links, user_data,total_users,active_channel_id):
-    data = {
+
+# Load data from MongoDB or initialize if not exists
+def load_data():
+    bot_data = bot_data_collection.find_one()
+    if bot_data:
+        return (
+            bot_data.get('channel_ids', []),
+            bot_data.get('text_links', {}),
+            {},
+            bot_data.get('total_users', 0),
+            bot_data.get('active_channel_id', None)
+        )
+    else:
+       return [], {}, {}, 0, None
+    
+def load_user_data():
+     users_cursor = user_data_collection.find()
+     user_data = {}
+     for user in users_cursor:
+         user_id = user.get('user_id')
+         if user_id:
+            user_data[user_id] = {
+                'start_date': user.get('start_date'),
+                'is_paid': user.get('is_paid'),
+                'is_blocked': user.get('is_blocked')
+           }
+     return user_data
+
+
+# Save data to MongoDB
+def save_data(channel_ids, text_links, user_data, total_users, active_channel_id):
+    bot_data = {
         'channel_ids': channel_ids,
         'text_links': text_links,
-        'user_data': user_data,
         'total_users': total_users,
         'active_channel_id': active_channel_id
     }
-    with open(DATA_FILE, 'w') as f:
-        json.dump(data, f, indent=4)
+    bot_data_collection.replace_one({}, bot_data, upsert=True)
+    
+def save_user_data(user_data):
+    for user_id, data in user_data.items():
+       user_data_collection.replace_one({'user_id':user_id}, 
+                                       { 'user_id':user_id,
+                                         'start_date':data.get('start_date'),
+                                        'is_paid':data.get('is_paid'),
+                                        'is_blocked':data.get('is_blocked')
+                                        },
+                                       upsert=True)
+
 
 # Initialize the bot with data from storage
-CHANNEL_IDS, text_links, user_data, total_users, active_channel_id = load_data()
+CHANNEL_IDS, text_links, _, total_users, active_channel_id = load_data()
+user_data = load_user_data()
 
 # Initialize the client
 client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
@@ -108,7 +143,8 @@ async def start(event):
         'is_blocked':False
         }
        total_users += 1  # Increment total_users for each new user
-       save_data(CHANNEL_IDS, text_links, user_data,total_users,active_channel_id)
+       save_data(CHANNEL_IDS, text_links,user_data,total_users,active_channel_id)
+       save_user_data(user_data)
        user = await client.get_entity(user_id)
        username = user.username if user.username else "N/A"
        await send_notification(f"New user started the bot:\nUser ID: {user_id}\nUsername: @{username}")
@@ -330,6 +366,7 @@ async def activate_user(event):
             user_data[user_id_to_activate]['is_paid'] = True
             user_data[user_id_to_activate]['is_blocked'] = False
             save_data(CHANNEL_IDS, text_links, user_data,total_users,active_channel_id)
+            save_user_data(user_data)
             await event.respond(f'User ID {user_id_to_activate} activated for 30 days! ✅')
             # Send a congratulatory message to the user
             await client.send_message(user_id_to_activate, "Congratulations! Your account has been activated for 30 days. Enjoy using the bot!")
@@ -360,6 +397,7 @@ async def block_user(event):
         if user_id_to_block in user_data:
             user_data[user_id_to_block]['is_blocked'] = True
             save_data(CHANNEL_IDS, text_links, user_data,total_users,active_channel_id)
+            save_user_data(user_data)
             await event.respond(f'User ID {user_id_to_block} blocked! 🚫')
         else:
              await event.respond(f'User ID {user_id_to_block} not found! ⚠️')
@@ -388,6 +426,7 @@ async def unblock_user(event):
         if user_id_to_unblock in user_data:
             user_data[user_id_to_unblock]['is_blocked'] = False
             save_data(CHANNEL_IDS, text_links, user_data,total_users,active_channel_id)
+            save_user_data(user_data)
             await event.respond(f'User ID {user_id_to_unblock} unblocked! ✅')
         else:
              await event.respond(f'User ID {user_id_to_unblock} not found! ⚠️')
