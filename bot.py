@@ -17,7 +17,7 @@ ADMIN_ID = int(os.getenv('ADMIN_ID'))
 NOTIFICATION_CHANNEL_ID = int(os.getenv('NOTIFICATION_CHANNEL_ID'))
 MONGO_URL = os.getenv('MONGO_URL')
 
-# File to store data
+# File to store data (Not used directly but kept for reference as per original code)
 DATA_FILE = 'bot_data.json'
 
 # Initialize MongoDB client
